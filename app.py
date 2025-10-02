@@ -38,35 +38,68 @@ EMBEDDING_DIMENSION = 1536
 # ============================================
 
 def extract_text_from_pdf(pdf_path):
-    """Extrae texto de un PDF"""
+    """Extrae texto de un PDF con mejor limpieza"""
     text = ""
     with open(pdf_path, 'rb') as file:
         pdf_reader = PyPDF2.PdfReader(file)
         for page in pdf_reader.pages:
-            text += page.extract_text()
+            page_text = page.extract_text()
+            # Limpiar caracteres extraños y espacios múltiples
+            page_text = page_text.replace('\x00', '')
+            page_text = ' '.join(page_text.split())
+            text += page_text + "\n\n"
     return text
 
-def chunk_text(text, chunk_size=1000, overlap=200):
-    """Divide texto en chunks con overlap"""
+def chunk_text(text, chunk_size=2000, overlap=400):
+    """Divide texto en chunks inteligentes respetando estructura"""
     chunks = []
-    start = 0
-    text_length = len(text)
     
-    while start < text_length:
-        end = start + chunk_size
-        chunk = text[start:end]
-        
-        # Buscar el último punto para no cortar frases
-        if end < text_length:
-            last_period = chunk.rfind('.')
-            if last_period > chunk_size * 0.7:  # Al menos 70% del chunk
-                end = start + last_period + 1
-                chunk = text[start:end]
-        
-        chunks.append(chunk.strip())
-        start = end - overlap
+    # Dividir por párrafos primero
+    paragraphs = text.split('\n\n')
     
-    return chunks
+    current_chunk = ""
+    
+    for paragraph in paragraphs:
+        paragraph = paragraph.strip()
+        if not paragraph:
+            continue
+        
+        # Si el párrafo solo cabe en un nuevo chunk
+        if len(current_chunk) + len(paragraph) > chunk_size:
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+            
+            # Si el párrafo es muy largo, dividirlo por frases
+            if len(paragraph) > chunk_size:
+                sentences = paragraph.split('. ')
+                temp_chunk = ""
+                for sentence in sentences:
+                    if len(temp_chunk) + len(sentence) > chunk_size:
+                        if temp_chunk:
+                            chunks.append(temp_chunk.strip() + '.')
+                        temp_chunk = sentence
+                    else:
+                        temp_chunk += sentence + '. '
+                current_chunk = temp_chunk
+            else:
+                current_chunk = paragraph
+        else:
+            current_chunk += "\n\n" + paragraph
+    
+    # Añadir el último chunk
+    if current_chunk:
+        chunks.append(current_chunk.strip())
+    
+    # Añadir overlap entre chunks para mantener contexto
+    overlapped_chunks = []
+    for i, chunk in enumerate(chunks):
+        if i > 0:
+            # Añadir últimas líneas del chunk anterior
+            prev_lines = chunks[i-1].split('\n')[-3:]
+            chunk = '\n'.join(prev_lines) + '\n\n' + chunk
+        overlapped_chunks.append(chunk)
+    
+    return overlapped_chunks
 
 def generate_embedding(text):
     """Genera embedding con OpenAI"""
