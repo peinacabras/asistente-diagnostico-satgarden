@@ -231,13 +231,19 @@ def ingest_csv(csv_path):
 def search_similar_documents(query, top_k=5):
     """Busca documentos similares en Supabase"""
     try:
+        st.info(f"🔍 Generando embedding para: '{query[:50]}...'")
+        
         # Generar embedding de la query
         query_embedding = generate_embedding(query)
         
         if not query_embedding:
+            st.error("❌ No se pudo generar el embedding")
             return []
         
+        st.info(f"✓ Embedding generado: {len(query_embedding)} dimensiones")
+        
         # Llamar a la función de Supabase
+        st.info("🔍 Buscando en Supabase...")
         result = supabase.rpc(
             'match_documents',
             {
@@ -246,9 +252,12 @@ def search_similar_documents(query, top_k=5):
             }
         ).execute()
         
+        st.info(f"✓ Respuesta de Supabase: {len(result.data) if result.data else 0} resultados")
+        
         return result.data if result.data else []
     except Exception as e:
-        st.error(f"Error en búsqueda: {str(e)}")
+        st.error(f"❌ Error en búsqueda: {str(e)}")
+        st.code(str(e))  # Mostrar error completo
         return []
 
 def generate_diagnostic(query, context_docs):
