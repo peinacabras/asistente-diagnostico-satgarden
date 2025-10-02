@@ -1,0 +1,7 @@
+openai
+supabase
+streamlit
+pypdf2
+pandas
+pillow
+python-dotenv
