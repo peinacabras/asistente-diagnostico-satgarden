@@ -229,45 +229,34 @@ def ingest_csv(csv_path):
 # ============================================
 
 def search_similar_documents(query, top_k=5):
-    """Busca documentos similares en Supabase"""
+    """Busca documentos similares en Supabase usando query SQL"""
     try:
-        st.info(f"🔍 Generando embedding para: '{query[:50]}...'")
-        
-        # Generar embedding de la query
         query_embedding = generate_embedding(query)
         
         if not query_embedding:
-            st.error("❌ No se pudo generar el embedding")
             return []
         
-        st.info(f"✓ Embedding generado: {len(query_embedding)} dimensiones")
+        # Convertir embedding a formato PostgreSQL array
+        embedding_array = "[" + ",".join(map(str, query_embedding)) + "]"
         
-        # Convertir a string para Supabase
-        embedding_str = str(query_embedding)
+        # Query SQL directo
+        sql_query = f"""
+        SELECT 
+          id,
+          content,
+          metadata,
+          1 - (embedding <=> '{embedding_array}'::vector) as similarity
+        FROM documents
+        ORDER BY embedding <=> '{embedding_array}'::vector
+        LIMIT {top_k};
+        """
         
-        st.info("🔍 Buscando en Supabase...")
-        
-        # Llamar a la función de Supabase con string
-        result = supabase.rpc(
-            'match_documents',
-            {
-                'query_embedding': embedding_str,
-                'match_count': top_k
-            }
-        ).execute()
-        
-        st.info(f"✓ Respuesta de Supabase: {len(result.data) if result.data else 0} resultados")
-        
-        if result.data:
-            st.success(f"Encontrados {len(result.data)} documentos relevantes")
+        result = supabase.rpc('query', {'query': sql_query}).execute()
         
         return result.data if result.data else []
     except Exception as e:
-        st.error(f"❌ Error en búsqueda: {str(e)}")
-        import traceback
-        st.code(traceback.format_exc())
+        st.error(f"Error: {str(e)}")
         return []
-
 def generate_diagnostic(query, context_docs):
     """Genera diagnóstico usando GPT-4 con contexto"""
     
