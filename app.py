@@ -242,22 +242,30 @@ def search_similar_documents(query, top_k=5):
         
         st.info(f"✓ Embedding generado: {len(query_embedding)} dimensiones")
         
-        # Llamar a la función de Supabase
+        # Convertir a string para Supabase
+        embedding_str = str(query_embedding)
+        
         st.info("🔍 Buscando en Supabase...")
+        
+        # Llamar a la función de Supabase con string
         result = supabase.rpc(
             'match_documents',
             {
-                'query_embedding': query_embedding,
+                'query_embedding': embedding_str,
                 'match_count': top_k
             }
         ).execute()
         
         st.info(f"✓ Respuesta de Supabase: {len(result.data) if result.data else 0} resultados")
         
+        if result.data:
+            st.success(f"Encontrados {len(result.data)} documentos relevantes")
+        
         return result.data if result.data else []
     except Exception as e:
         st.error(f"❌ Error en búsqueda: {str(e)}")
-        st.code(str(e))  # Mostrar error completo
+        import traceback
+        st.code(traceback.format_exc())
         return []
 
 def generate_diagnostic(query, context_docs):
