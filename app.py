@@ -413,7 +413,141 @@ FORMATO DE RESPUESTA:
     except Exception as e:
         return f"❌ Error generando respuesta: {str(e)}"
 
-def log_diagnostic(tecnico, modelo, descripcion, diagnostico, fue_util=None):
+def generate_budget_estimate(trabajo, modelo, descripcion):
+    """Genera estimación de presupuesto usando IA"""
+    
+    prompt = f"""Eres un experto en presupuestación de trabajos de maquinaria agrícola de Satgarden.
+
+Analiza este trabajo y proporciona una estimación realista:
+
+Tipo de trabajo: {trabajo}
+Modelo de máquina: {modelo}
+Descripción: {descripcion}
+
+Proporciona una respuesta en este formato JSON:
+
+{{
+  "tiempo_horas": 2.5,
+  "tiempo_justificacion": "Breve explicación del por qué ese tiempo",
+  "piezas": [
+    {{"nombre": "Nombre pieza", "codigo": "COD-123", "precio_estimado": 45, "notas": "Si aplica"}},
+    {{"nombre": "Otra pieza", "codigo": "COD-456", "precio_estimado": 78}}
+  ],
+  "herramientas_especiales": ["Si necesita algo específico"],
+  "dificultad": "Baja/Media/Alta",
+  "notas_adicionales": "Cualquier consideración importante"
+}}
+
+Si no conoces precios exactos de piezas, estima rangos realistas para maquinaria agrícola. Si no se necesitan piezas, deja el array vacío.
+"""
+    
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-4-turbo-preview",
+            messages=[
+                {"role": "system", "content": "Eres un experto en maquinaria agrícola. Responde SOLO con JSON válido, sin texto adicional."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,
+            max_tokens=800
+        )
+        
+        import json
+        resultado = json.loads(response.choices[0].message.content)
+        return resultado
+    except Exception as e:
+        st.error(f"Error generando estimación: {str(e)}")
+        return None
+
+def generate_pdf_report(consulta_data, respuesta, fuentes, tipo_reporte="consulta"):
+    """Genera PDF con la consulta técnica o presupuesto"""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+    from io import BytesIO
+    import datetime
+    
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
+    
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=24,
+        textColor=colors.HexColor('#1f4788'),
+        spaceAfter=30,
+        alignment=TA_CENTER
+    )
+    
+    story = []
+    
+    # Encabezado
+    if tipo_reporte == "consulta":
+        story.append(Paragraph("CONSULTA TÉCNICA", title_style))
+    else:
+        story.append(Paragraph("PRESUPUESTO", title_style))
+    
+    story.append(Paragraph(f"Satgarden - {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}", styles['Normal']))
+    story.append(Spacer(1, 0.5*cm))
+    
+    # Datos de la consulta
+    data_table = [
+        ["Técnico:", consulta_data.get('tecnico', 'N/A')],
+        ["Modelo:", consulta_data.get('modelo', 'N/A')],
+        ["Tipo:", consulta_data.get('tipo', 'N/A')],
+    ]
+    
+    table = Table(data_table, colWidths=[4*cm, 12*cm])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (0, -1), colors.lightgrey),
+        ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+    
+    story.append(table)
+    story.append(Spacer(1, 0.5*cm))
+    
+    # Consulta/Descripción
+    story.append(Paragraph("<b>Consulta:</b>", styles['Heading2']))
+    story.append(Paragraph(consulta_data.get('consulta', ''), styles['Normal']))
+    story.append(Spacer(1, 0.5*cm))
+    
+    # Respuesta
+    story.append(Paragraph("<b>Respuesta Técnica:</b>", styles['Heading2']))
+    
+    # Convertir markdown a texto plano para PDF
+    respuesta_limpia = respuesta.replace('#', '').replace('**', '').replace('*', '')
+    for line in respuesta_limpia.split('\n'):
+        if line.strip():
+            story.append(Paragraph(line, styles['Normal']))
+            story.append(Spacer(1, 0.2*cm))
+    
+    story.append(Spacer(1, 0.5*cm))
+    
+    # Fuentes consultadas
+    if fuentes:
+        story.append(Paragraph("<b>Fuentes Consultadas:</b>", styles['Heading2']))
+        for i, doc in enumerate(fuentes[:3]):
+            fuente_nombre = doc['metadata'].get('source', 'Desconocida')
+            story.append(Paragraph(f"{i+1}. {fuente_nombre}", styles['Normal']))
+        story.append(Spacer(1, 0.5*cm))
+    
+    # Footer
+    story.append(Spacer(1, 1*cm))
+    footer_style = ParagraphStyle('Footer', parent=styles['Normal'], fontSize=9, textColor=colors.grey, alignment=TA_CENTER)
+    story.append(Paragraph("Satgarden | www.satgarden.com | +34 935122686", footer_style))
+    
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
     """Registra diagnóstico para análisis posterior"""
     try:
         data = {
@@ -500,7 +634,7 @@ def main():
             st.caption(str(e))
     
     # Interfaz principal
-    tabs = st.tabs(["🔍 Diagnóstico", "📚 Búsqueda", "📝 Historial"])
+    tabs = st.tabs(["🔍 Consulta Técnica", "💰 Calculadora Presupuesto", "📊 Dashboard", "📚 Búsqueda", "📝 Historial"])
     
     # TAB 1: CONSULTA TÉCNICA
     with tabs[0]:
@@ -569,6 +703,26 @@ def main():
                 st.success("✅ Información encontrada")
                 st.markdown(respuesta)
                 
+                # Botón para descargar PDF
+                st.divider()
+                
+                consulta_data = {
+                    'tecnico': tecnico or "Anónimo",
+                    'modelo': modelo or "No especificado",
+                    'tipo': tipo_consulta,
+                    'consulta': consulta
+                }
+                
+                pdf_buffer = generate_pdf_report(consulta_data, respuesta, similar_docs, tipo_reporte="consulta")
+                
+                st.download_button(
+                    label="📄 Descargar Informe PDF",
+                    data=pdf_buffer,
+                    file_name=f"consulta_tecnica_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
+                
                 # Feedback
                 st.divider()
                 col_fb1, col_fb2 = st.columns(2)
@@ -588,7 +742,254 @@ def main():
                             st.text(doc['content'][:400] + "...")
                             st.divider()
     
-    # TAB 2: BÚSQUEDA
+    # TAB 2: CALCULADORA DE PRESUPUESTO
+    with tabs[3]:
+        st.header("💰 Calculadora de Presupuesto")
+        st.caption("Estimación automática de tiempo y costes basada en IA")
+        
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            modelo_presupuesto = st.text_input(
+                "Modelo de máquina",
+                placeholder="Ej: SIS-350",
+                key="modelo_presupuesto"
+            )
+        
+        with col2:
+            tipo_trabajo = st.selectbox(
+                "Tipo de trabajo",
+                ["Mantenimiento", "Reparación", "Instalación", "Revisión", "Otro"],
+                key="tipo_trabajo"
+            )
+        
+        descripcion_trabajo = st.text_area(
+            "Descripción del trabajo a realizar",
+            placeholder="Ej: Cambio completo de aceite, filtros y revisión general. Incluye limpieza de componentes y verificación de tolvas.",
+            height=100,
+            key="desc_trabajo"
+        )
+        
+        # Configuración de tarifas
+        with st.expander("⚙️ Configuración de tarifas"):
+            tarifa_hora = st.number_input(
+                "Tarifa hora técnico (€)",
+                min_value=20,
+                max_value=100,
+                value=45,
+                step=5,
+                key="tarifa"
+            )
+        
+        if st.button("💰 Calcular Presupuesto", type="primary", use_container_width=True, key="calc_presup"):
+            if not descripcion_trabajo:
+                st.error("Describe el trabajo a realizar")
+            else:
+                with st.spinner("Analizando trabajo y estimando costes..."):
+                    estimacion = generate_budget_estimate(tipo_trabajo, modelo_presupuesto, descripcion_trabajo)
+                
+                if estimacion:
+                    st.success("✅ Estimación completada")
+                    
+                    # Cálculos
+                    coste_mano_obra = estimacion['tiempo_horas'] * tarifa_hora
+                    coste_piezas = sum([p['precio_estimado'] for p in estimacion.get('piezas', [])])
+                    total = coste_mano_obra + coste_piezas
+                    
+                    # Mostrar resumen
+                    col_a, col_b, col_c = st.columns(3)
+                    with col_a:
+                        st.metric("Tiempo estimado", f"{estimacion['tiempo_horas']} h")
+                    with col_b:
+                        st.metric("Mano de obra", f"{coste_mano_obra:.2f}€")
+                    with col_c:
+                        st.metric("TOTAL", f"{total:.2f}€", delta=f"+{coste_piezas:.2f}€ piezas")
+                    
+                    st.divider()
+                    
+                    # Desglose detallado
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.subheader("🔧 Mano de Obra")
+                        st.write(f"**Tiempo:** {estimacion['tiempo_horas']} horas")
+                        st.write(f"**Tarifa:** {tarifa_hora}€/h")
+                        st.write(f"**Subtotal:** {coste_mano_obra:.2f}€")
+                        st.caption(estimacion.get('tiempo_justificacion', ''))
+                        
+                        st.markdown("---")
+                        st.write(f"**Dificultad:** {estimacion.get('dificultad', 'Media')}")
+                        
+                        if estimacion.get('herramientas_especiales'):
+                            st.write("**Herramientas especiales:**")
+                            for herr in estimacion['herramientas_especiales']:
+                                st.write(f"• {herr}")
+                    
+                    with col2:
+                        st.subheader("🔩 Piezas y Recambios")
+                        
+                        if estimacion.get('piezas'):
+                            piezas_data = []
+                            for pieza in estimacion['piezas']:
+                                piezas_data.append({
+                                    'Pieza': pieza['nombre'],
+                                    'Código': pieza.get('codigo', '-'),
+                                    'Precio': f"{pieza['precio_estimado']}€"
+                                })
+                            
+                            df_piezas = pd.DataFrame(piezas_data)
+                            st.dataframe(df_piezas, use_container_width=True, hide_index=True)
+                            
+                            st.write(f"**Subtotal piezas:** {coste_piezas:.2f}€")
+                        else:
+                            st.info("No se requieren piezas para este trabajo")
+                    
+                    # Notas adicionales
+                    if estimacion.get('notas_adicionales'):
+                        st.info(f"**Nota:** {estimacion['notas_adicionales']}")
+                    
+                    # Generar PDF del presupuesto
+                    st.divider()
+                    
+                    presupuesto_data = {
+                        'tecnico': st.session_state.get('tecnico', 'Satgarden'),
+                        'modelo': modelo_presupuesto or "No especificado",
+                        'tipo': tipo_trabajo,
+                        'consulta': descripcion_trabajo
+                    }
+                    
+                    # Crear texto de respuesta para PDF
+                    respuesta_presupuesto = f"""
+ESTIMACIÓN DE PRESUPUESTO
+
+Tiempo estimado: {estimacion['tiempo_horas']} horas
+Mano de obra: {coste_mano_obra:.2f}€ ({tarifa_hora}€/h)
+Piezas y recambios: {coste_piezas:.2f}€
+TOTAL: {total:.2f}€
+
+Dificultad: {estimacion.get('dificultad', 'Media')}
+
+Justificación del tiempo:
+{estimacion.get('tiempo_justificacion', '')}
+"""
+                    
+                    if estimacion.get('piezas'):
+                        respuesta_presupuesto += "\n\nPiezas necesarias:\n"
+                        for pieza in estimacion['piezas']:
+                            respuesta_presupuesto += f"• {pieza['nombre']} ({pieza.get('codigo', 'N/A')}): {pieza['precio_estimado']}€\n"
+                    
+                    if estimacion.get('notas_adicionales'):
+                        respuesta_presupuesto += f"\n\nNotas: {estimacion['notas_adicionales']}"
+                    
+                    pdf_buffer = generate_pdf_report(presupuesto_data, respuesta_presupuesto, [], tipo_reporte="presupuesto")
+                    
+                    st.download_button(
+                        label="📄 Descargar Presupuesto PDF",
+                        data=pdf_buffer,
+                        file_name=f"presupuesto_{modelo_presupuesto}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
+    
+    # TAB 3: DASHBOARD
+    with tabs[2]:
+        st.header("📊 Dashboard de Estadísticas")
+        
+        try:
+            # Obtener datos
+            logs = supabase.table("diagnostics_log").select("*").execute()
+            docs = supabase.table("documents").select("*").execute()
+            
+            if logs.data and len(logs.data) > 0:
+                df_logs = pd.DataFrame(logs.data)
+                df_logs['created_at'] = pd.to_datetime(df_logs['created_at'])
+                
+                # Métricas generales
+                st.subheader("📈 Actividad General")
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    st.metric("Total Consultas", len(df_logs))
+                
+                with col2:
+                    ultimos_7_dias = df_logs[df_logs['created_at'] > datetime.now() - pd.Timedelta(days=7)]
+                    st.metric("Últimos 7 días", len(ultimos_7_dias))
+                
+                with col3:
+                    if 'fue_util' in df_logs.columns:
+                        positivas = len(df_logs[df_logs['fue_util'] == True])
+                        total_con_feedback = len(df_logs[df_logs['fue_util'].notna()])
+                        if total_con_feedback > 0:
+                            satisfaccion = (positivas / total_con_feedback) * 100
+                            st.metric("Satisfacción", f"{satisfaccion:.0f}%")
+                        else:
+                            st.metric("Satisfacción", "N/A")
+                    else:
+                        st.metric("Satisfacción", "N/A")
+                
+                with col4:
+                    st.metric("Documentos", len(docs.data) if docs.data else 0)
+                
+                st.divider()
+                
+                # Gráficos
+                col_left, col_right = st.columns(2)
+                
+                with col_left:
+                    st.subheader("🔧 Máquinas Más Consultadas")
+                    if 'modelo_maquina' in df_logs.columns:
+                        top_maquinas = df_logs['modelo_maquina'].value_counts().head(5)
+                        st.bar_chart(top_maquinas)
+                    else:
+                        st.info("No hay datos suficientes")
+                
+                with col_right:
+                    st.subheader("👤 Técnicos Más Activos")
+                    if 'tecnico' in df_logs.columns:
+                        top_tecnicos = df_logs['tecnico'].value_counts().head(5)
+                        st.bar_chart(top_tecnicos)
+                    else:
+                        st.info("No hay datos suficientes")
+                
+                st.divider()
+                
+                # Consultas recientes
+                st.subheader("🕐 Consultas Recientes")
+                df_recientes = df_logs.sort_values('created_at', ascending=False).head(10)
+                st.dataframe(
+                    df_recientes[['created_at', 'tecnico', 'modelo_maquina', 'descripcion_averia']].rename(columns={
+                        'created_at': 'Fecha',
+                        'tecnico': 'Técnico',
+                        'modelo_maquina': 'Modelo',
+                        'descripcion_averia': 'Consulta'
+                    }),
+                    use_container_width=True,
+                    hide_index=True
+                )
+                
+                # Fuentes más referenciadas
+                st.divider()
+                st.subheader("📚 Documentos Más Útiles")
+                if docs.data:
+                    df_docs = pd.DataFrame(docs.data)
+                    if 'metadata' in df_docs.columns:
+                        fuentes = df_docs['metadata'].apply(lambda x: x.get('source', 'Desconocido') if isinstance(x, dict) else 'Desconocido')
+                        top_fuentes = fuentes.value_counts().head(5)
+                        
+                        for fuente, count in top_fuentes.items():
+                            st.write(f"📄 **{fuente}**: {count} fragmentos")
+                
+            else:
+                st.info("📊 Aún no hay suficientes consultas para generar estadísticas. Realiza algunas consultas técnicas primero.")
+                
+                # Mostrar al menos info de documentos
+                if docs.data:
+                    st.metric("Documentos cargados", len(docs.data))
+        
+        except Exception as e:
+            st.error(f"Error cargando dashboard: {str(e)}")
+    
+    # TAB 4: BÚSQUEDA
     with tabs[1]:
         st.header("Búsqueda en Base de Conocimiento")
         
@@ -613,8 +1014,8 @@ def main():
                 else:
                     st.warning("No se encontraron resultados")
     
-    # TAB 3: HISTORIAL
-    with tabs[2]:
+    # TAB 5: HISTORIAL
+    with tabs[4]:
         st.header("Historial de Diagnósticos")
         
         try:
