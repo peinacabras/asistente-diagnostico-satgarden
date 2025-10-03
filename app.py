@@ -474,7 +474,7 @@ def generate_pdf_report(consulta_data, respuesta, fuentes, tipo_reporte="consult
         return None
     
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
+    pdf_doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
     
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
@@ -549,7 +549,7 @@ def generate_pdf_report(consulta_data, respuesta, fuentes, tipo_reporte="consult
     story.append(Paragraph("Satgarden | www.satgarden.com | +34 935122686", footer_style))
     
     try:
-        doc.build(story)
+        pdf_doc.build(story)
         buffer.seek(0)
         return buffer
     except Exception as e:
