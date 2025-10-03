@@ -231,44 +231,28 @@ def ingest_csv(csv_path):
 def search_similar_documents(query, top_k=5):
     """Busca documentos similares en Supabase"""
     try:
-        st.info(f"🔍 Generando embedding para: '{query[:50]}...'")
-        
         # Generar embedding de la query
         query_embedding = generate_embedding(query)
         
         if not query_embedding:
-            st.error("❌ No se pudo generar el embedding")
             return []
         
-        st.info(f"✓ Embedding generado: {len(query_embedding)} dimensiones")
-        
-        # Convertir a string para Supabase
-        embedding_str = str(query_embedding)
-        
-        st.info("🔍 Buscando en Supabase...")
-        
-        # Llamar a la función de Supabase con string
+        # Llamar a la función de Supabase
         result = supabase.rpc(
             'match_documents',
             {
-                'query_embedding': embedding_str,
+                'query_embedding': query_embedding,
                 'match_count': top_k
             }
         ).execute()
         
-        st.info(f"✓ Respuesta de Supabase: {len(result.data) if result.data else 0} resultados")
-        
-        if result.data:
-            st.success(f"Encontrados {len(result.data)} documentos relevantes")
-        
         return result.data if result.data else []
     except Exception as e:
-        st.error(f"❌ Error en búsqueda: {str(e)}")
-        import traceback
-        st.code(traceback.format_exc())
+        st.error(f"Error en búsqueda: {str(e)}")
         return []
-def generate_diagnostic(query, context_docs):
-    """Genera diagnóstico usando GPT-4 con contexto"""
+
+def generate_technical_response(query, context_docs, tipo_consulta):
+    """Genera respuesta técnica según el tipo de consulta"""
     
     # Construir contexto desde documentos recuperados
     if context_docs:
@@ -277,44 +261,149 @@ def generate_diagnostic(query, context_docs):
             for doc in context_docs
         ])
     else:
-        context = "No se encontraron documentos relevantes en la base de conocimiento."
+        context = "No se encontraron documentos específicos en la base de conocimiento."
     
-    # Prompt especializado
-    system_prompt = """Eres un técnico experto de Satgarden especializado en diagnóstico de maquinaria agrícola.
+    # Prompts especializados según tipo de consulta
+    prompts_por_tipo = {
+        "Mantenimiento": """Eres un técnico experto de Satgarden. Proporciona información detallada sobre mantenimiento.
 
-Tu trabajo es analizar averías y proporcionar diagnósticos precisos basándote en:
-- Manuales técnicos de los fabricantes
-- Histórico de reparaciones similares
-- Tu conocimiento técnico
+FORMATO DE RESPUESTA:
 
-FORMATO DE RESPUESTA (usa siempre esta estructura):
+## 📋 Procedimiento de Mantenimiento
+
+[Descripción general del mantenimiento]
+
+## 🔧 Tareas a Realizar
+
+1. [Tarea 1 con detalles específicos]
+2. [Tarea 2 con detalles específicos]
+...
+
+## ⏱️ Periodicidad Recomendada
+
+- Frecuencia: [diaria/semanal/mensual/anual]
+- Duración estimada: [tiempo]
+
+## 🛠️ Herramientas Necesarias
+
+- [Lista de herramientas]
+
+## ⚠️ Precauciones
+
+- [Aspectos de seguridad importantes]
+""",
+        
+        "Recambios": """Eres un técnico experto de Satgarden. Proporciona información sobre recambios y piezas.
+
+FORMATO DE RESPUESTA:
+
+## 🔧 Recambios Necesarios
+
+| Pieza | Código | Cantidad | Notas |
+|-------|--------|----------|-------|
+| [nombre] | [código] | [cant] | [info] |
+
+## 📦 Información Adicional
+
+- Compatibilidad: [modelos compatibles]
+- Disponibilidad: [info sobre stock]
+- Coste estimado: [rango de precio si disponible]
+
+## 🔄 Procedimiento de Sustitución
+
+[Pasos básicos para cambiar la pieza]
+""",
+        
+        "Despiece": """Eres un técnico experto de Satgarden. Proporciona información sobre despiece y componentes.
+
+FORMATO DE RESPUESTA:
+
+## 🔩 Componentes Principales
+
+1. **[Nombre componente]**
+   - Código: [código]
+   - Función: [descripción]
+   - Ubicación: [dónde está]
+
+2. **[Siguiente componente]**
+   ...
+
+## 📐 Diagrama/Secuencia
+
+[Descripción del orden de desmontaje]
+
+## ⚙️ Ensamblaje
+
+[Secuencia de montaje inversa o específica]
+""",
+        
+        "Procedimiento": """Eres un técnico experto de Satgarden. Proporciona procedimientos técnicos paso a paso.
+
+FORMATO DE RESPUESTA:
+
+## 📝 Procedimiento: [Nombre]
+
+### Preparación
+
+- [Requisitos previos]
+- [Herramientas necesarias]
+
+### Pasos
+
+1. **[Paso 1]**
+   - [Detalle]
+   - [Precaución si aplica]
+
+2. **[Paso 2]**
+   ...
+
+### Verificación
+
+- [Cómo verificar que se hizo correctamente]
+
+### Tiempo Estimado
+
+- [Duración aproximada]
+""",
+        
+        "Avería": """Eres un técnico experto de Satgarden. Diagnostica y proporciona soluciones.
+
+FORMATO DE RESPUESTA:
 
 ## 🔍 Diagnósticos Probables
-[Lista ordenada por probabilidad, cada uno con explicación breve]
 
-## 🔧 Piezas Necesarias
-[Lista con códigos de pieza si están disponibles]
+1. **[Causa más probable]** (80%)
+   - Síntomas: [descripción]
+   - Solución: [pasos]
+
+2. **[Segunda causa]** (15%)
+   ...
+
+## 🔧 Piezas a Verificar/Cambiar
+
+- [Lista con códigos]
 
 ## 📋 Procedimiento de Reparación
-[Pasos numerados, claros y concisos]
+
+[Pasos detallados]
 
 ## ⏱️ Estimación
+
 - Tiempo: [minutos/horas]
 - Dificultad: [Baja/Media/Alta]
-- Coste piezas: [estimación]
-
-## ❓ Información Adicional Necesaria
-[Si necesitas más datos del técnico para afinar el diagnóstico]
-
-Sé específico, práctico y cita las fuentes cuando sea relevante."""
+"""
+    }
+    
+    system_prompt = prompts_por_tipo.get(tipo_consulta, prompts_por_tipo["Procedimiento"])
+    
+    system_prompt += "\n\nSé específico, práctico y cita las fuentes cuando estén disponibles. Si no tienes información suficiente, indícalo claramente."
 
     try:
-        # Llamada a OpenAI
         response = openai_client.chat.completions.create(
             model="gpt-4-turbo-preview",
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"CONTEXTO TÉCNICO:\n{context}\n\nCONSULTA DEL TÉCNICO:\n{query}"}
+                {"role": "user", "content": f"CONTEXTO TÉCNICO:\n{context}\n\nCONSULTA:\n{query}"}
             ],
             temperature=0.3,
             max_tokens=1500
@@ -322,7 +411,7 @@ Sé específico, práctico y cita las fuentes cuando sea relevante."""
         
         return response.choices[0].message.content
     except Exception as e:
-        return f"❌ Error generando diagnóstico: {str(e)}"
+        return f"❌ Error generando respuesta: {str(e)}"
 
 def log_diagnostic(tecnico, modelo, descripcion, diagnostico, fue_util=None):
     """Registra diagnóstico para análisis posterior"""
@@ -413,82 +502,78 @@ def main():
     # Interfaz principal
     tabs = st.tabs(["🔍 Diagnóstico", "📚 Búsqueda", "📝 Historial"])
     
-    # TAB 1: DIAGNÓSTICO
+    # TAB 1: CONSULTA TÉCNICA
     with tabs[0]:
-        st.header("Nuevo Diagnóstico")
+        st.header("Nueva Consulta Técnica")
+        st.caption("Busca procedimientos, mantenimiento, recambios, despieces y soluciones técnicas")
         
-        col1, col2 = st.columns([2, 1])
+        col1, col2 = st.columns([3, 1])
         
         with col1:
-            tecnico = st.text_input("Nombre del técnico", value="", key="tecnico")
-            
-            modelo = st.selectbox(
+            modelo = st.text_input(
                 "Modelo de máquina",
-                ["SIS-350", "SIS-500", "INFACO F3020", "AMB Rousset CR100", 
-                 "Robot cortacésped", "Cosechadora", "Otro"],
-                key="modelo"
+                placeholder="Ej: SIS-350, INFACO F3020, AMB Rousset CR100...",
+                key="modelo",
+                help="Escribe el modelo exacto de la máquina"
             )
-            
-            if modelo == "Otro":
-                modelo_custom = st.text_input("Especifica modelo:")
-                if modelo_custom:
-                    modelo = modelo_custom
         
         with col2:
-            tipo_averia = st.selectbox(
-                "Categoría",
-                ["No arranca", "Ruido anormal", "Pérdida de potencia",
-                 "Fuga", "Vibración", "Eléctrico", "Otro"]
+            tipo_consulta = st.selectbox(
+                "Tipo de consulta",
+                ["Mantenimiento", "Avería", "Recambios", "Despiece", "Procedimiento", "Otro"]
             )
         
-        descripcion = st.text_area(
-            "Describe la avería en detalle",
-            placeholder="Ejemplo: Motor no arranca. Al girar la llave hace clic repetitivo. Las luces del panel parpadean débilmente. Batería medida a 11.8V...",
-            height=120
+        consulta = st.text_area(
+            "¿Qué necesitas saber?",
+            placeholder="Ejemplos:\n• ¿Cuál es el procedimiento de mantenimiento anual del SIS-350?\n• ¿Qué recambios necesito para cambiar el motor?\n• ¿Cómo se desmonta la bandeja vibratoria?\n• ¿Dónde puedo encontrar el despiece del sistema hidráulico?",
+            height=120,
+            key="consulta"
         )
+        
+        tecnico = st.text_input("Técnico (opcional)", value="", key="tecnico", placeholder="Tu nombre")
         
         # Foto opcional
         uploaded_image = st.file_uploader(
-            "📸 Foto de la avería (opcional)",
+            "📸 Foto de la máquina/pieza (opcional)",
             type=['png', 'jpg', 'jpeg'],
             key="image_uploader"
         )
         if uploaded_image:
             st.image(uploaded_image, width=300)
         
-        if st.button("🔍 Generar Diagnóstico", type="primary", use_container_width=True):
-            if not descripcion:
-                st.error("Por favor, describe la avería")
+        if st.button("🔍 Buscar Información", type="primary", use_container_width=True):
+            if not consulta:
+                st.error("Por favor, describe tu consulta")
             else:
                 # Construir query completa
                 query = f"""
-                Modelo: {modelo}
-                Categoría: {tipo_averia}
-                Descripción: {descripcion}
+                Modelo: {modelo if modelo else 'No especificado'}
+                Tipo de consulta: {tipo_consulta}
+                Consulta: {consulta}
                 """
                 
-                with st.spinner("Analizando avería y consultando base de conocimiento..."):
+                with st.spinner("Buscando en manuales y base de conocimiento..."):
                     # Buscar documentos relevantes
                     similar_docs = search_similar_documents(query, top_k=5)
                     
                     if not similar_docs:
                         st.warning("⚠️ No se encontraron documentos relevantes. Respuesta basada en conocimiento general.")
                     
-                    # Generar diagnóstico
-                    diagnostico = generate_diagnostic(query, similar_docs)
+                    # Generar respuesta
+                    respuesta = generate_technical_response(query, similar_docs, tipo_consulta)
                     
                     # Registrar en log
-                    log_diagnostic(tecnico or "Anónimo", modelo, descripcion, diagnostico)
+                    log_diagnostic(tecnico or "Anónimo", modelo or "No especificado", consulta, respuesta)
                 
                 # Mostrar resultado
-                st.success("✅ Diagnóstico completado")
-                st.markdown(diagnostico)
+                st.success("✅ Información encontrada")
+                st.markdown(respuesta)
                 
                 # Feedback
                 st.divider()
                 col_fb1, col_fb2 = st.columns(2)
                 with col_fb1:
-                    if st.button("👍 Diagnóstico útil", key="useful"):
+                    if st.button("👍 Información útil", key="useful"):
                         st.success("¡Gracias por el feedback!")
                 with col_fb2:
                     if st.button("👎 No fue útil", key="not_useful"):
