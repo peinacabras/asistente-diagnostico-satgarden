@@ -424,7 +424,7 @@ Tipo de trabajo: {trabajo}
 Modelo de máquina: {modelo}
 Descripción: {descripcion}
 
-Proporciona una respuesta en este formato JSON:
+IMPORTANTE: Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional antes ni después.
 
 {{
   "tiempo_horas": 2.5,
@@ -434,18 +434,18 @@ Proporciona una respuesta en este formato JSON:
     {{"nombre": "Otra pieza", "codigo": "COD-456", "precio_estimado": 78}}
   ],
   "herramientas_especiales": ["Si necesita algo específico"],
-  "dificultad": "Baja/Media/Alta",
+  "dificultad": "Baja",
   "notas_adicionales": "Cualquier consideración importante"
 }}
 
-Si no conoces precios exactos de piezas, estima rangos realistas para maquinaria agrícola. Si no se necesitan piezas, deja el array vacío.
+Si no conoces precios exactos de piezas, estima rangos realistas para maquinaria agrícola. Si no se necesitan piezas, deja el array vacío. La dificultad debe ser: Baja, Media o Alta.
 """
     
     try:
         response = openai_client.chat.completions.create(
             model="gpt-4-turbo-preview",
             messages=[
-                {"role": "system", "content": "Eres un experto en maquinaria agrícola. Responde SOLO con JSON válido, sin texto adicional."},
+                {"role": "system", "content": "Eres un experto en maquinaria agrícola. Responde SOLO con JSON válido, sin markdown, sin texto adicional."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.3,
@@ -453,8 +453,20 @@ Si no conoces precios exactos de piezas, estima rangos realistas para maquinaria
         )
         
         import json
-        resultado = json.loads(response.choices[0].message.content)
+        # Limpiar posible markdown del JSON
+        response_text = response.choices[0].message.content.strip()
+        if response_text.startswith("```"):
+            response_text = response_text.split("```")[1]
+            if response_text.startswith("json"):
+                response_text = response_text[4:]
+        response_text = response_text.strip()
+        
+        resultado = json.loads(response_text)
         return resultado
+    except json.JSONDecodeError as e:
+        st.error(f"Error: La IA no devolvió un JSON válido. Inténtalo de nuevo.")
+        st.code(response.choices[0].message.content)
+        return None
     except Exception as e:
         st.error(f"Error generando estimación: {str(e)}")
         return None
@@ -641,7 +653,7 @@ def main():
             st.caption(str(e))
     
     # Interfaz principal
-    tabs = st.tabs(["🔍 Consulta Técnica", "💰 Calculadora", "📊 Dashboard", "🔍 Búsqueda", "📝 Historial"])
+    tabs = st.tabs(["🔍 Consulta Técnica", "🔍 Búsqueda", "💰 Calculadora", "📊 Dashboard", "📝 Historial"])
     
     # TAB 0: CONSULTA TÉCNICA
     with tabs[0]:
@@ -905,10 +917,10 @@ Justificación del tiempo:
                             use_container_width=True
                         )
                     else:
-                        st.warning("No se pudo generar el PDF")
+                        st.warning("No se pudo generar el PDF"                        )
     
     # TAB 3: DASHBOARD
-    with tabs[2]:
+    with tabs[3]:
         st.header("📊 Dashboard de Estadísticas")
         
         try:
