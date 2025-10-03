@@ -696,9 +696,10 @@ def main():
                     st.subheader("🔧 Máquinas Más Consultadas")
                     if 'modelo_maquina' in df_logs.columns:
                         top_maquinas = df_logs['modelo_maquina'].value_counts().head(5)
-                        st.bar_chart(top_maquinas)_maquinas = df_logs['modelo_maquina'].value_counts().head(5)
                         st.bar_chart(top_maquinas)
                     else:
+                        st.info("No hay datos suficientes")
+                        else:
                         st.info("No hay datos suficientes")
                 
                 with col_right:
