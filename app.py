@@ -634,9 +634,9 @@ def main():
             st.caption(str(e))
     
     # Interfaz principal
-    tabs = st.tabs(["🔍 Consulta Técnica", "💰 Calculadora Presupuesto", "📊 Dashboard", "📚 Búsqueda", "📝 Historial"])
+    tabs = st.tabs(["🔍 Consulta Técnica", "💰 Calculadora", "📊 Dashboard", "🔍 Búsqueda", "📝 Historial"])
     
-    # TAB 1: CONSULTA TÉCNICA
+    # TAB 0: CONSULTA TÉCNICA
     with tabs[0]:
         st.header("Nueva Consulta Técnica")
         st.caption("Busca procedimientos, mantenimiento, recambios, despieces y soluciones técnicas")
