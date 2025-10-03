@@ -697,7 +697,10 @@ def main():
                     respuesta = generate_technical_response(query, similar_docs, tipo_consulta)
                     
                     # Registrar en log
-                    log_diagnostic(tecnico or "Anónimo", modelo or "No especificado", consulta, respuesta)
+                    try:
+                        log_diagnostic(tecnico or "Anónimo", modelo or "No especificado", consulta, respuesta, None)
+                    except:
+                        pass  # Si falla el log, continuar de todas formas
                 
                 # Mostrar resultado
                 st.success("✅ Información encontrada")
