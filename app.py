@@ -699,8 +699,6 @@ def main():
                         st.bar_chart(top_maquinas)
                     else:
                         st.info("No hay datos suficientes")
-                        else:
-                        st.info("No hay datos suficientes")
                 
                 with col_right:
                     st.subheader("👤 Técnicos Más Activos")
@@ -732,7 +730,7 @@ def main():
                     st.metric("Documentos cargados", len(docs.data))
         
         except Exception as e:
-            st.error(f"Error: {str(e)}")
+            st.error(f"Error cargando dashboard: {str(e)}")
     
     # TAB 4: HISTORIAL
     with tabs[4]:
@@ -754,7 +752,7 @@ def main():
             else:
                 st.info("Aún no hay diagnósticos registrados")
         except Exception as e:
-            st.error(f"Error: {str(e)}")
+            st.error(f"Error cargando historial: {str(e)}")
 
 if __name__ == "__main__":
     main()
