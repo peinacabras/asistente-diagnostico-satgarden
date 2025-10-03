@@ -572,8 +572,8 @@ def main():
         layout="wide"
     )
     
-    st.title("🔧 Asistente de Diagnóstico Técnico")
-    st.markdown("**Satgarden** | Sistema RAG con IA")
+    st.title("🔧 Asistente Técnico Satgarden")
+    st.markdown("Sistema RAG con IA")
     
     # Sidebar para gestión de datos
     with st.sidebar:
@@ -912,7 +912,7 @@ Justificación del tiempo:
                     st.metric("Total Consultas", len(df_logs))
                 
                 with col2:
-                    ultimos_7_dias = df_logs[df_logs['created_at'] > datetime.now() - pd.Timedelta(days=7)]
+                    ultimos_7_dias = df_logs[df_logs['created_at'] > pd.Timestamp.now(tz='UTC') - pd.Timedelta(days=7)]
                     st.metric("Últimos 7 días", len(ultimos_7_dias))
                 
                 with col3:
