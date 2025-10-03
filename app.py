@@ -461,14 +461,17 @@ Si no conoces precios exactos de piezas, estima rangos realistas para maquinaria
 
 def generate_pdf_report(consulta_data, respuesta, fuentes, tipo_reporte="consulta"):
     """Genera PDF con la consulta técnica o presupuesto"""
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.units import cm
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
-    from reportlab.lib import colors
-    from reportlab.lib.enums import TA_CENTER, TA_RIGHT
-    from io import BytesIO
-    import datetime
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import cm
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        from reportlab.lib import colors
+        from reportlab.lib.enums import TA_CENTER
+        from io import BytesIO
+    except ImportError:
+        st.error("Error: La librería reportlab no está instalada correctamente")
+        return None
     
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
@@ -491,7 +494,7 @@ def generate_pdf_report(consulta_data, respuesta, fuentes, tipo_reporte="consult
     else:
         story.append(Paragraph("PRESUPUESTO", title_style))
     
-    story.append(Paragraph(f"Satgarden - {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}", styles['Normal']))
+    story.append(Paragraph(f"Satgarden - {datetime.now().strftime('%d/%m/%Y %H:%M')}", styles['Normal']))
     story.append(Spacer(1, 0.5*cm))
     
     # Datos de la consulta
@@ -545,9 +548,13 @@ def generate_pdf_report(consulta_data, respuesta, fuentes, tipo_reporte="consult
     footer_style = ParagraphStyle('Footer', parent=styles['Normal'], fontSize=9, textColor=colors.grey, alignment=TA_CENTER)
     story.append(Paragraph("Satgarden | www.satgarden.com | +34 935122686", footer_style))
     
-    doc.build(story)
-    buffer.seek(0)
-    return buffer
+    try:
+        doc.build(story)
+        buffer.seek(0)
+        return buffer
+    except Exception as e:
+        st.error(f"Error generando PDF: {str(e)}")
+        return None
     """Registra diagnóstico para análisis posterior"""
     try:
         data = {
@@ -718,13 +725,16 @@ def main():
                 
                 pdf_buffer = generate_pdf_report(consulta_data, respuesta, similar_docs, tipo_reporte="consulta")
                 
-                st.download_button(
-                    label="📄 Descargar Informe PDF",
-                    data=pdf_buffer,
-                    file_name=f"consulta_tecnica_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
-                    mime="application/pdf",
-                    use_container_width=True
-                )
+                if pdf_buffer:
+                    st.download_button(
+                        label="📄 Descargar Informe PDF",
+                        data=pdf_buffer,
+                        file_name=f"consulta_tecnica_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
+                else:
+                    st.warning("No se pudo generar el PDF")
                 
                 # Feedback
                 st.divider()
@@ -886,13 +896,16 @@ Justificación del tiempo:
                     
                     pdf_buffer = generate_pdf_report(presupuesto_data, respuesta_presupuesto, [], tipo_reporte="presupuesto")
                     
-                    st.download_button(
-                        label="📄 Descargar Presupuesto PDF",
-                        data=pdf_buffer,
-                        file_name=f"presupuesto_{modelo_presupuesto}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
-                        mime="application/pdf",
-                        use_container_width=True
-                    )
+                    if pdf_buffer:
+                        st.download_button(
+                            label="📄 Descargar Presupuesto PDF",
+                            data=pdf_buffer,
+                            file_name=f"presupuesto_{modelo_presupuesto}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                            mime="application/pdf",
+                            use_container_width=True
+                        )
+                    else:
+                        st.warning("No se pudo generar el PDF")
     
     # TAB 3: DASHBOARD
     with tabs[2]:
