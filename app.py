@@ -13,9 +13,29 @@ import pandas as pd
 from datetime import datetime
 from dotenv import load_dotenv
 import re
+import json
+from io import BytesIO
+
+# Importaciones que pueden faltar en algunos entornos
+try:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER
+except ImportError:
+    st.error("Por favor, instala la librería 'reportlab' con 'pip install reportlab'")
+
+try:
+    import base64
+except ImportError:
+    st.error("La librería 'base64' es necesaria.")
+
 
 load_dotenv()
 
+# --- Clientes y Configuración ---
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 supabase: Client = create_client(
     os.getenv("SUPABASE_URL"),
@@ -25,6 +45,8 @@ supabase: Client = create_client(
 EMBEDDING_MODEL = "text-embedding-3-small"
 EMBEDDING_DIMENSION = 1536
 
+
+# --- Funciones de Procesamiento de Documentos ---
 def extract_text_from_pdf(pdf_path):
     text = ""
     try:
@@ -114,6 +136,8 @@ def store_document(content, metadata):
         st.error(f"Error guardando documento: {str(e)}")
         return None
 
+
+# --- Funciones de Ingesta de Datos ---
 def ingest_pdf(pdf_path, doc_type="manual"):
     filename = os.path.basename(pdf_path)
     st.info(f"📄 Procesando: {filename}")
@@ -190,6 +214,8 @@ def ingest_csv(csv_path):
     except Exception as e:
         st.error(f"❌ Error procesando CSV: {str(e)}")
 
+
+# --- Funciones de Búsqueda y Generación de Respuesta ---
 def search_similar_documents(query, top_k=5):
     try:
         st.info(f"🔍 Generando embedding para: '{query[:50]}...'")
@@ -288,7 +314,6 @@ Dificultad: Baja, Media o Alta. Si no necesita piezas, array vacío."""
             max_tokens=800
         )
         
-        import json
         response_text = response.choices[0].message.content.strip()
         if response_text.startswith("```"):
             response_text = response_text.split("```")[1]
@@ -305,88 +330,78 @@ Dificultad: Baja, Media o Alta. Si no necesita piezas, array vacío."""
         st.error(f"Error: {str(e)}")
         return None
 
+
+# --- Funciones de Reporte y Logging ---
 def generate_pdf_report(consulta_data, respuesta, fuentes, tipo_reporte="consulta"):
     try:
-        from reportlab.lib.pagesizes import A4
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-        from reportlab.lib.units import cm
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-        from reportlab.lib import colors
-        from reportlab.lib.enums import TA_CENTER
-        from io import BytesIO
-    except ImportError:
-        st.error("Error: reportlab no instalado")
-        return None
-    
-    buffer = BytesIO()
-    pdf_doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
-    
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        'CustomTitle',
-        parent=styles['Heading1'],
-        fontSize=24,
-        textColor=colors.HexColor('#1f4788'),
-        spaceAfter=30,
-        alignment=TA_CENTER
-    )
-    
-    story = []
-    
-    if tipo_reporte == "consulta":
-        story.append(Paragraph("CONSULTA TÉCNICA", title_style))
-    else:
-        story.append(Paragraph("PRESUPUESTO", title_style))
-    
-    story.append(Paragraph(f"Satgarden - {datetime.now().strftime('%d/%m/%Y %H:%M')}", styles['Normal']))
-    story.append(Spacer(1, 0.5*cm))
-    
-    data_table = [
-        ["Técnico:", consulta_data.get('tecnico', 'N/A')],
-        ["Modelo:", consulta_data.get('modelo', 'N/A')],
-        ["Tipo:", consulta_data.get('tipo', 'N/A')],
-    ]
-    
-    table = Table(data_table, colWidths=[4*cm, 12*cm])
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (0, -1), colors.lightgrey),
-        ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 10),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black)
-    ]))
-    
-    story.append(table)
-    story.append(Spacer(1, 0.5*cm))
-    
-    story.append(Paragraph("<b>Consulta:</b>", styles['Heading2']))
-    story.append(Paragraph(consulta_data.get('consulta', ''), styles['Normal']))
-    story.append(Spacer(1, 0.5*cm))
-    
-    story.append(Paragraph("<b>Respuesta Técnica:</b>", styles['Heading2']))
-    
-    respuesta_limpia = respuesta.replace('#', '').replace('**', '').replace('*', '')
-    for line in respuesta_limpia.split('\n'):
-        if line.strip():
-            story.append(Paragraph(line, styles['Normal']))
-            story.append(Spacer(1, 0.2*cm))
-    
-    story.append(Spacer(1, 0.5*cm))
-    
-    if fuentes:
-        story.append(Paragraph("<b>Fuentes Consultadas:</b>", styles['Heading2']))
-        for i, doc in enumerate(fuentes[:3]):
-            fuente_nombre = doc['metadata'].get('source', 'Desconocida')
-            story.append(Paragraph(f"{i+1}. {fuente_nombre}", styles['Normal']))
+        buffer = BytesIO()
+        pdf_doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
+        
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=24,
+            textColor=colors.HexColor('#1f4788'),
+            spaceAfter=30,
+            alignment=TA_CENTER
+        )
+        
+        story = []
+        
+        if tipo_reporte == "consulta":
+            story.append(Paragraph("CONSULTA TÉCNICA", title_style))
+        else:
+            story.append(Paragraph("PRESUPUESTO", title_style))
+        
+        story.append(Paragraph(f"Satgarden - {datetime.now().strftime('%d/%m/%Y %H:%M')}", styles['Normal']))
         story.append(Spacer(1, 0.5*cm))
-    
-    story.append(Spacer(1, 1*cm))
-    footer_style = ParagraphStyle('Footer', parent=styles['Normal'], fontSize=9, textColor=colors.grey, alignment=TA_CENTER)
-    story.append(Paragraph("Satgarden | www.satgarden.com | +34 935122686", footer_style))
-    
-    try:
+        
+        data_table = [
+            ["Técnico:", consulta_data.get('tecnico', 'N/A')],
+            ["Modelo:", consulta_data.get('modelo', 'N/A')],
+            ["Tipo:", consulta_data.get('tipo', 'N/A')],
+        ]
+        
+        table = Table(data_table, colWidths=[4*cm, 12*cm])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.lightgrey),
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        
+        story.append(table)
+        story.append(Spacer(1, 0.5*cm))
+        
+        story.append(Paragraph("<b>Consulta:</b>", styles['Heading2']))
+        story.append(Paragraph(consulta_data.get('consulta', ''), styles['Normal']))
+        story.append(Spacer(1, 0.5*cm))
+        
+        story.append(Paragraph("<b>Respuesta Técnica:</b>", styles['Heading2']))
+        
+        respuesta_limpia = respuesta.replace('#', '').replace('**', '').replace('*', '')
+        for line in respuesta_limpia.split('\n'):
+            if line.strip():
+                story.append(Paragraph(line, styles['Normal']))
+                story.append(Spacer(1, 0.2*cm))
+        
+        story.append(Spacer(1, 0.5*cm))
+        
+        if fuentes:
+            story.append(Paragraph("<b>Fuentes Consultadas:</b>", styles['Heading2']))
+            for i, doc in enumerate(fuentes[:3]):
+                fuente_nombre = doc['metadata'].get('source', 'Desconocida')
+                story.append(Paragraph(f"{i+1}. {fuente_nombre}", styles['Normal']))
+            story.append(Spacer(1, 0.5*cm))
+        
+        story.append(Spacer(1, 1*cm))
+        footer_style = ParagraphStyle('Footer', parent=styles['Normal'], fontSize=9, textColor=colors.grey, alignment=TA_CENTER)
+        story.append(Paragraph("Satgarden | www.satgarden.com | +34 935122686", footer_style))
+        
         pdf_doc.build(story)
         buffer.seek(0)
         return buffer
@@ -394,170 +409,7 @@ def generate_pdf_report(consulta_data, respuesta, fuentes, tipo_reporte="consult
         st.error(f"Error generando PDF: {str(e)}")
         return None
 
-def extract_parts_from_image(image_file, modelo):
-    """Extrae información de piezas desde imagen de despiece usando GPT-4 Vision"""
-    try:
-        import base64
-        
-        # Convertir imagen a base64
-        image_bytes = image_file.read()
-        base64_image = base64.b64encode(image_bytes).decode('utf-8')
-        
-        # Detectar tipo de imagen
-        image_type = image_file.type.split('/')[-1]
-        
-        prompt = f"""Analiza esta imagen de despiece técnico de la máquina {modelo}.
-
-Extrae TODA la información visible de piezas. Para cada pieza identificable:
-- Número de posición en el diagrama
-- Código de referencia/pieza (si está visible)
-- Nombre o descripción de la pieza
-- Cualquier nota o especificación visible
-
-IMPORTANTE: Responde ÚNICAMENTE con JSON válido, sin markdown:
-
-{{
-  "modelo_maquina": "{modelo}",
-  "piezas": [
-    {{
-      "numero_posicion": "1",
-      "codigo": "SIS-350-001",
-      "nombre": "Tornillo hexagonal M8",
-      "cantidad": "4",
-      "observaciones": "Material: acero inoxidable"
-    }}
-  ],
-  "notas_generales": "Cualquier información adicional del diagrama"
-}}
-
-Si no puedes leer algún código claramente, déjalo como "No legible" pero intenta extraer toda la info posible."""
-
-        response = openai_client.chat.completions.create(
-            model="gpt-4-vision-preview",
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/{image_type};base64,{base64_image}",
-                                "detail": "high"
-                            }
-                        }
-                    ]
-                }
-            ],
-            max_tokens=2000,
-            temperature=0.2
-        )
-        
-        import json
-        response_text = response.choices[0].message.content.strip()
-        
-        # Limpiar markdown si existe
-        if response_text.startswith("```"):
-            response_text = response_text.split("```")[1]
-            if response_text.startswith("json"):
-                response_text = response_text[4:]
-        response_text = response_text.strip()
-        
-        resultado = json.loads(response_text)
-        return resultado
-        
-    except json.JSONDecodeError:
-        st.error("La IA no pudo extraer las piezas correctamente. Intenta con otra imagen más clara.")
-        return None
-    except Exception as e:
-        st.error(f"Error procesando imagen: {str(e)}")
-        return None
-
-def save_parts_to_catalog(piezas_data, imagen_nombre):
-    """Guarda piezas extraídas en el catálogo de Supabase"""
-    try:
-        success_count = 0
-        modelo = piezas_data.get('modelo_maquina', 'No especificado')
-        
-        for pieza in piezas_data.get('piezas', []):
-            data = {
-                "modelo_maquina": modelo,
-                "numero_pieza": str(pieza.get('numero_posicion', '')),
-                "codigo_referencia": pieza.get('codigo', 'No especificado'),
-                "nombre_pieza": pieza.get('nombre', ''),
-                "cantidad": str(pieza.get('cantidad', '1')),
-                "observaciones": pieza.get('observaciones', ''),
-                "imagen_source": imagen_nombre,
-                "notas_generales": piezas_data.get('notas_generales', '')
-            }
-            
-            result = supabase.table("piezas_catalogo").insert(data).execute()
-            if result:
-                success_count += 1
-        
-        return success_count
-    except Exception as e:
-        st.error(f"Error guardando en catálogo: {str(e)}")
-        return 0
-
-def search_parts_in_catalog(modelo=None, pieza_buscar=None):
-    """Busca piezas en el catálogo"""
-    try:
-        query = supabase.table("piezas_catalogo").select("*")
-        
-        if modelo:
-            query = query.ilike("modelo_maquina", f"%{modelo}%")
-        
-        if pieza_buscar:
-            query = query.or_(f"nombre_pieza.ilike.%{pieza_buscar}%,codigo_referencia.ilike.%{pieza_buscar}%,observaciones.ilike.%{pieza_buscar}%")
-        
-        result = query.limit(50).execute()
-        return result.data if result.data else []
-    except Exception as e:
-        st.error(f"Error buscando en catálogo: {str(e)}")
-        return []
-
-def search_parts_online(modelo, pieza_descripcion):
-    """Busca piezas en internet cuando no están en catálogo"""
-    try:
-        from anthropic import Anthropic
-        
-        # Usar web_search para encontrar la pieza
-        query = f"{modelo} {pieza_descripcion} recambio pieza repuesto"
-        
-        # Nota: Aquí usarías web_search si estuviera disponible
-        # Por ahora, simulamos con una búsqueda estructurada con el LLM
-        
-        prompt = f"""Necesito encontrar información sobre esta pieza de repuesto:
-
-Máquina: {modelo}
-Pieza buscada: {pieza_descripcion}
-
-Basándote en tu conocimiento, proporciona:
-1. Posibles códigos de referencia de esta pieza
-2. Nombres alternativos o sinónimos
-3. Proveedores habituales de piezas para {modelo}
-4. Rango de precio estimado
-5. Piezas alternativas compatibles si las conoces
-
-Sé específico y práctico."""
-
-        response = openai_client.chat.completions.create(
-            model="gpt-4-turbo-preview",
-            messages=[
-                {"role": "system", "content": "Eres un experto en repuestos de maquinaria agrícola."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.3,
-            max_tokens=800
-        )
-        
-        return response.choices[0].message.content
-        
-    except Exception as e:
-        return f"Error buscando online: {str(e)}"
-
-
+def log_diagnostic(tecnico, modelo, descripcion, diagnostico, fue_util):
     try:
         data = {
             "tecnico": tecnico,
@@ -570,6 +422,8 @@ Sé específico y práctico."""
     except Exception as e:
         st.error(f"Error registrando: {str(e)}")
 
+
+# --- Aplicación Principal (Streamlit) ---
 def main():
     st.set_page_config(
         page_title="Asistente Técnico Satgarden",
@@ -601,8 +455,8 @@ def main():
                     
                     try:
                         os.remove(temp_path)
-                    except:
-                        pass
+                    except Exception as e:
+                        st.warning(f"No se pudo eliminar el archivo temporal: {e}")
             
             st.divider()
             
@@ -621,17 +475,19 @@ def main():
                 
                 try:
                     os.remove(temp_path)
-                except:
-                    pass
+                except Exception as e:
+                    st.warning(f"No se pudo eliminar el archivo temporal: {e}")
         
         st.divider()
         
         st.header("📊 Estadísticas")
         try:
-            doc_count = supabase.table("documents").select("id", count="exact").execute()
-            st.metric("Chunks en base", doc_count.count if doc_count.count else 0)
+            doc_count_response = supabase.table("documents").select("id", count="exact").execute()
+            doc_count = doc_count_response.count if doc_count_response else 0
+            st.metric("Chunks en base", doc_count)
         except Exception as e:
             st.metric("Chunks en base", "Error")
+            st.caption(f"No se pudo conectar: {e}")
     
     tabs = st.tabs(["🔍 Consulta Técnica", "🔍 Búsqueda", "💰 Calculadora", "📊 Dashboard", "📝 Historial"])
     
@@ -680,8 +536,8 @@ def main():
                     
                     try:
                         log_diagnostic(tecnico or "Anónimo", modelo or "No especificado", consulta, respuesta, None)
-                    except:
-                        pass
+                    except Exception as e:
+                        st.warning(f"No se pudo registrar el log: {e}")
                 
                 st.success("✅ Información encontrada")
                 st.markdown(respuesta)
@@ -846,6 +702,7 @@ def main():
                     st.metric("Últimos 7 días", len(ultimos_7_dias))
                 
                 with col3:
+                    # Lógica de satisfacción pendiente
                     st.metric("Satisfacción", "N/A")
                 
                 with col4:
@@ -861,4 +718,13 @@ def main():
                         top_maquinas = df_logs['modelo_maquina'].value_counts().head(5)
                         st.bar_chart(top_maquinas)
                     else:
-                        st.info("No hay datos suficientes")
+                        st.info("No hay datos suficientes de modelos.")
+            else:
+                st.info("Aún no hay datos de consultas para mostrar.")
+
+        except Exception as e:
+            st.error(f"Error al cargar el dashboard: {e}")
+            st.warning("Asegúrate de que las tablas 'diagnostics_log' y 'documents' existen en Supabase.")
+
+if __name__ == "__main__":
+    main()
