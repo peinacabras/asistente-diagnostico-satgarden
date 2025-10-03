@@ -394,7 +394,170 @@ def generate_pdf_report(consulta_data, respuesta, fuentes, tipo_reporte="consult
         st.error(f"Error generando PDF: {str(e)}")
         return None
 
-def log_diagnostic(tecnico, modelo, descripcion, diagnostico, fue_util=None):
+def extract_parts_from_image(image_file, modelo):
+    """Extrae información de piezas desde imagen de despiece usando GPT-4 Vision"""
+    try:
+        import base64
+        
+        # Convertir imagen a base64
+        image_bytes = image_file.read()
+        base64_image = base64.b64encode(image_bytes).decode('utf-8')
+        
+        # Detectar tipo de imagen
+        image_type = image_file.type.split('/')[-1]
+        
+        prompt = f"""Analiza esta imagen de despiece técnico de la máquina {modelo}.
+
+Extrae TODA la información visible de piezas. Para cada pieza identificable:
+- Número de posición en el diagrama
+- Código de referencia/pieza (si está visible)
+- Nombre o descripción de la pieza
+- Cualquier nota o especificación visible
+
+IMPORTANTE: Responde ÚNICAMENTE con JSON válido, sin markdown:
+
+{{
+  "modelo_maquina": "{modelo}",
+  "piezas": [
+    {{
+      "numero_posicion": "1",
+      "codigo": "SIS-350-001",
+      "nombre": "Tornillo hexagonal M8",
+      "cantidad": "4",
+      "observaciones": "Material: acero inoxidable"
+    }}
+  ],
+  "notas_generales": "Cualquier información adicional del diagrama"
+}}
+
+Si no puedes leer algún código claramente, déjalo como "No legible" pero intenta extraer toda la info posible."""
+
+        response = openai_client.chat.completions.create(
+            model="gpt-4-vision-preview",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/{image_type};base64,{base64_image}",
+                                "detail": "high"
+                            }
+                        }
+                    ]
+                }
+            ],
+            max_tokens=2000,
+            temperature=0.2
+        )
+        
+        import json
+        response_text = response.choices[0].message.content.strip()
+        
+        # Limpiar markdown si existe
+        if response_text.startswith("```"):
+            response_text = response_text.split("```")[1]
+            if response_text.startswith("json"):
+                response_text = response_text[4:]
+        response_text = response_text.strip()
+        
+        resultado = json.loads(response_text)
+        return resultado
+        
+    except json.JSONDecodeError:
+        st.error("La IA no pudo extraer las piezas correctamente. Intenta con otra imagen más clara.")
+        return None
+    except Exception as e:
+        st.error(f"Error procesando imagen: {str(e)}")
+        return None
+
+def save_parts_to_catalog(piezas_data, imagen_nombre):
+    """Guarda piezas extraídas en el catálogo de Supabase"""
+    try:
+        success_count = 0
+        modelo = piezas_data.get('modelo_maquina', 'No especificado')
+        
+        for pieza in piezas_data.get('piezas', []):
+            data = {
+                "modelo_maquina": modelo,
+                "numero_pieza": str(pieza.get('numero_posicion', '')),
+                "codigo_referencia": pieza.get('codigo', 'No especificado'),
+                "nombre_pieza": pieza.get('nombre', ''),
+                "cantidad": str(pieza.get('cantidad', '1')),
+                "observaciones": pieza.get('observaciones', ''),
+                "imagen_source": imagen_nombre,
+                "notas_generales": piezas_data.get('notas_generales', '')
+            }
+            
+            result = supabase.table("piezas_catalogo").insert(data).execute()
+            if result:
+                success_count += 1
+        
+        return success_count
+    except Exception as e:
+        st.error(f"Error guardando en catálogo: {str(e)}")
+        return 0
+
+def search_parts_in_catalog(modelo=None, pieza_buscar=None):
+    """Busca piezas en el catálogo"""
+    try:
+        query = supabase.table("piezas_catalogo").select("*")
+        
+        if modelo:
+            query = query.ilike("modelo_maquina", f"%{modelo}%")
+        
+        if pieza_buscar:
+            query = query.or_(f"nombre_pieza.ilike.%{pieza_buscar}%,codigo_referencia.ilike.%{pieza_buscar}%,observaciones.ilike.%{pieza_buscar}%")
+        
+        result = query.limit(50).execute()
+        return result.data if result.data else []
+    except Exception as e:
+        st.error(f"Error buscando en catálogo: {str(e)}")
+        return []
+
+def search_parts_online(modelo, pieza_descripcion):
+    """Busca piezas en internet cuando no están en catálogo"""
+    try:
+        from anthropic import Anthropic
+        
+        # Usar web_search para encontrar la pieza
+        query = f"{modelo} {pieza_descripcion} recambio pieza repuesto"
+        
+        # Nota: Aquí usarías web_search si estuviera disponible
+        # Por ahora, simulamos con una búsqueda estructurada con el LLM
+        
+        prompt = f"""Necesito encontrar información sobre esta pieza de repuesto:
+
+Máquina: {modelo}
+Pieza buscada: {pieza_descripcion}
+
+Basándote en tu conocimiento, proporciona:
+1. Posibles códigos de referencia de esta pieza
+2. Nombres alternativos o sinónimos
+3. Proveedores habituales de piezas para {modelo}
+4. Rango de precio estimado
+5. Piezas alternativas compatibles si las conoces
+
+Sé específico y práctico."""
+
+        response = openai_client.chat.completions.create(
+            model="gpt-4-turbo-preview",
+            messages=[
+                {"role": "system", "content": "Eres un experto en repuestos de maquinaria agrícola."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,
+            max_tokens=800
+        )
+        
+        return response.choices[0].message.content
+        
+    except Exception as e:
+        return f"Error buscando online: {str(e)}"
+
+
     try:
         data = {
             "tecnico": tecnico,
@@ -699,60 +862,3 @@ def main():
                         st.bar_chart(top_maquinas)
                     else:
                         st.info("No hay datos suficientes")
-                
-                with col_right:
-                    st.subheader("👤 Técnicos Más Activos")
-                    if 'tecnico' in df_logs.columns:
-                        top_tecnicos = df_logs['tecnico'].value_counts().head(5)
-                        st.bar_chart(top_tecnicos)
-                    else:
-                        st.info("No hay datos suficientes")
-                
-                st.divider()
-                
-                st.subheader("🕐 Consultas Recientes")
-                df_recientes = df_logs.sort_values('created_at', ascending=False).head(10)
-                st.dataframe(
-                    df_recientes[['created_at', 'tecnico', 'modelo_maquina', 'descripcion_averia']].rename(columns={
-                        'created_at': 'Fecha',
-                        'tecnico': 'Técnico',
-                        'modelo_maquina': 'Modelo',
-                        'descripcion_averia': 'Consulta'
-                    }),
-                    use_container_width=True,
-                    hide_index=True
-                )
-                
-            else:
-                st.info("📊 Aún no hay suficientes consultas. Realiza algunas consultas primero.")
-                
-                if docs.data:
-                    st.metric("Documentos cargados", len(docs.data))
-        
-        except Exception as e:
-            st.error(f"Error cargando dashboard: {str(e)}")
-    
-    # TAB 4: HISTORIAL
-    with tabs[4]:
-        st.header("Historial de Diagnósticos")
-        
-        try:
-            logs = supabase.table("diagnostics_log")\
-                .select("*")\
-                .order("created_at", desc=True)\
-                .limit(20)\
-                .execute()
-            
-            if logs.data:
-                df_logs = pd.DataFrame(logs.data)
-                st.dataframe(
-                    df_logs[['created_at', 'tecnico', 'modelo_maquina', 'fue_util']],
-                    use_container_width=True
-                )
-            else:
-                st.info("Aún no hay diagnósticos registrados")
-        except Exception as e:
-            st.error(f"Error cargando historial: {str(e)}")
-
-if __name__ == "__main__":
-    main()
