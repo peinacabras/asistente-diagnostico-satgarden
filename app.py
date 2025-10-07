@@ -1,7 +1,8 @@
 """
-ASISTENTE TÉCNICO SATGARDEN V2.5
+ASISTENTE TÉCNICO SATGARDEN V2.6
 Implementación completa de todas las funcionalidades:
-- NUEVO: Módulo de Gestión de Casos (Mini-CMMS) con tablero Kanban.
+- NUEVO: Informes de cierre y descarga en PDF para el módulo CMMS.
+- Módulo de Gestión de Casos (Mini-CMMS) con tablero Kanban.
 - Integración para crear casos directamente desde las consultas.
 - Dashboard de Inteligencia Técnica mejorado y optimizado.
 - Añadido texto introductorio bajo el título.
@@ -38,7 +39,7 @@ except ImportError:
 
 # --- Configuración Inicial ---
 load_dotenv()
-st.set_page_config(page_title="Asistente Satgarden V2.5", page_icon="🛠️", layout="wide")
+st.set_page_config(page_title="Asistente Satgarden V2.6", page_icon="🛠️", layout="wide")
 
 # --- Conexiones (Cacheado para Rendimiento) ---
 @st.cache_resource
@@ -224,16 +225,12 @@ def get_work_orders():
 def create_work_order(title, description, machine_model, work_type, assigned_to, priority, related_consultation_id=None):
     try:
         supabase.table("work_orders").insert({
-            "title": title,
-            "description": description,
-            "machine_model": machine_model,
-            "work_type": work_type,
-            "assigned_to": assigned_to,
-            "priority": priority,
+            "title": title, "description": description, "machine_model": machine_model,
+            "work_type": work_type, "assigned_to": assigned_to, "priority": priority,
             "related_consultation_id": related_consultation_id
         }).execute()
         st.success("¡Nuevo caso de trabajo creado con éxito!")
-        get_work_orders.clear() # Limpiar caché para refrescar el tablero
+        get_work_orders.clear()
     except Exception as e:
         st.error(f"Error al crear el caso de trabajo: {e}")
 
@@ -244,6 +241,17 @@ def update_work_order_status(order_id, new_status):
         get_work_orders.clear()
     except Exception as e:
         st.error(f"Error al actualizar el estado del caso: {e}")
+
+def update_work_order_with_report(order_id, report_text):
+    try:
+        supabase.table("work_orders").update({
+            "status": "Cerrado",
+            "final_report": report_text
+        }).eq("id", order_id).execute()
+        st.toast(f"Caso #{order_id} finalizado y reporte guardado.")
+        get_work_orders.clear()
+    except Exception as e:
+        st.error(f"Error al guardar el informe del caso: {e}")
 
 def search_verified_knowledge(query_text, top_k=1, threshold=0.8):
     embedding = generate_embedding(query_text)
@@ -339,6 +347,24 @@ def generate_pdf_report(title, data_dict, content_text):
     doc.build(story)
     buffer.seek(0)
     return buffer
+
+def generate_work_order_pdf(case_data):
+    if not REPORTLAB_AVAILABLE:
+        st.error("La librería 'reportlab' no está instalada.")
+        return None
+    
+    title = f"Informe de Cierre de Caso #{case_data['id']}"
+    data_dict = {
+        "Título del Caso": case_data['title'],
+        "Modelo de Máquina": case_data['machine_model'],
+        "Tipo de Trabajo": case_data['work_type'],
+        "Prioridad": case_data['priority'],
+        "Asignado a": case_data.get('assigned_to', 'N/A')
+    }
+    content = f"<b>Descripción Inicial:</b><br/>{case_data['description']}<br/><br/><b>Informe Final de Resolución:</b><br/>{case_data.get('final_report', 'No se ha redactado un informe.')}"
+    
+    return generate_pdf_report(title, data_dict, content)
+
 
 def consult_tab():
     st.header("Consulta Técnica")
@@ -555,6 +581,8 @@ def cmms_tab():
 
     if st.button("➕ Crear Nuevo Caso"):
         st.session_state['show_new_case_form'] = True
+        if 'case_to_close' in st.session_state:
+            del st.session_state['case_to_close']
     
     if st.session_state.get('show_new_case_form'):
         with st.form("new_case_form"):
@@ -575,6 +603,21 @@ def cmms_tab():
                     st.rerun()
                 else:
                     st.warning("El título y el modelo de la máquina son obligatorios.")
+
+    if 'case_to_close' in st.session_state:
+        case = st.session_state['case_to_close']
+        st.subheader(f"Finalizar y Redactar Informe del Caso #{case['id']}")
+        with st.form(key=f"close_form_{case['id']}"):
+            report_text = st.text_area("Informe de Resolución:", height=200, help="Detalla los trabajos realizados, las piezas cambiadas y cualquier observación relevante.")
+            submit_report = st.form_submit_button("Finalizar Caso y Guardar Informe")
+
+            if submit_report:
+                if report_text:
+                    update_work_order_with_report(case['id'], report_text)
+                    del st.session_state['case_to_close']
+                    st.rerun()
+                else:
+                    st.warning("El informe de resolución es obligatorio para cerrar un caso.")
 
     st.divider()
     st.subheader("Tablero de Casos")
@@ -609,7 +652,9 @@ def cmms_tab():
                 if case.get('assigned_to'):
                     st.markdown(f"**Asignado a:** {case['assigned_to']}")
                 if st.button("✅ Finalizar", key=f"finish_{case['id']}", use_container_width=True):
-                    update_work_order_status(case['id'], 'Cerrado')
+                    st.session_state['case_to_close'] = case
+                    if 'show_new_case_form' in st.session_state:
+                        del st.session_state['show_new_case_form']
                     st.rerun()
     
     with col3:
@@ -618,15 +663,27 @@ def cmms_tab():
             with st.container(border=True):
                 st.markdown(f"**{case['title']}**")
                 st.caption(f"#{case['id']} | Prioridad: {case['priority']}")
-                st.markdown(f"**Máquina:** {case['machine_model']}")
+                with st.expander("Ver Informe Final"):
+                    st.markdown(case.get('final_report', 'No hay informe disponible.'))
+                
+                pdf_buffer = generate_work_order_pdf(case)
+                if pdf_buffer:
+                    st.download_button(
+                        label="📥 Descargar Informe",
+                        data=pdf_buffer,
+                        file_name=f"informe_caso_{case['id']}_{case['machine_model']}.pdf",
+                        mime="application/pdf",
+                        key=f"pdf_{case['id']}"
+                    )
 
 
 # --- Aplicación Principal ---
 def main():
-    st.title("🛠️ Asistente Técnico Satgarden V2.5")
+    st.title("🛠️ Asistente Técnico Satgarden V2.6")
     st.markdown("""
     **Bienvenido al Asistente Técnico de Satgarden.** Esta plataforma centraliza todo el conocimiento técnico de la empresa.
     - **Consulta:** Realiza preguntas técnicas sobre cualquier máquina.
+    - **Gestión de Casos:** Crea y gestiona órdenes de trabajo en un tablero visual.
     - **Mantenimiento Preventivo:** Genera planes de mantenimiento basados en horas de uso.
     - **Calculadora:** Estima tiempos y costes para reparaciones o mantenimientos.
     - **Utiliza la barra lateral** para cargar nuevos manuales en PDF.
@@ -674,6 +731,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
