@@ -1,14 +1,14 @@
 """
-ASISTENTE TÉCNICO SATGARDEN V2.7
+ASISTENTE TÉCNICO SATGARDEN V2.8
 Implementación completa de todas las funcionalidades:
-- NUEVO: Pantalla principal a modo de Hub para una navegación intuitiva.
-- NUEVO: Diseño mejorado con fondo degradado.
+- NUEVO: Rediseño completo de la interfaz de usuario (UI/UX).
+- Nueva paleta de colores, tipografía mejorada y rediseño de componentes.
+- Iconos en el menú principal para una mejor usabilidad.
+- Pantalla principal a modo de Hub para una navegación intuitiva.
 - Informes de cierre y descarga en PDF para el módulo CMMS.
 - Módulo de Gestión de Casos (Mini-CMMS) con tablero Kanban.
 - Integración para crear casos directamente desde las consultas.
 - Dashboard de Inteligencia Técnica mejorado y optimizado.
-- Añadido texto introductorio bajo el título.
-- Añadido logo de la empresa en la barra lateral.
 - Sistema de Conocimiento Verificado
 - Generador de Planes de Mantenimiento Preventivo con Exportación a PDF
 - Gestión de la Base de Conocimiento (Carga y Eliminación)
@@ -41,38 +41,95 @@ except ImportError:
 
 # --- Configuración Inicial ---
 load_dotenv()
-st.set_page_config(page_title="Asistente Satgarden V2.7", page_icon="🛠️", layout="wide")
+st.set_page_config(page_title="Asistente Satgarden V2.8", page_icon="🛠️", layout="wide")
 
 # --- Estilos CSS Personalizados ---
 def load_css():
     st.markdown("""
     <style>
-        /* Gradiente de fondo para toda la aplicación */
+        /* Base and Background */
         .stApp {
-            background-image: linear-gradient(to top right, #2c3e50, #4a00e0);
-            background-attachment: fixed;
-            background-size: cover;
+            background-color: #0c111e; /* Dark blue-grey background */
         }
-        /* Estilo para los botones del Hub */
+
+        /* Typography */
+        h1, h2, h3, h4, h5, h6 {
+            color: #e0e0e0; /* Off-white for titles */
+        }
+        .stMarkdown, .stTextInput, .stTextArea, .stSelectbox {
+            color: #c0c0c0; /* Lighter grey for body text */
+        }
+
+        /* --- Hub Page Specific Styles --- */
         .stButton > button {
-            border-radius: 10px;
-            padding: 20px 25px;
-            font-size: 1.2em;
-            font-weight: bold;
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            transition: all 0.3s ease-in-out;
+            all: unset; /* Reset Streamlit's default button styles */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            width: 100%;
+            height: 150px; /* Fixed height for buttons */
+            padding: 20px;
+            font-size: 1.1em;
+            font-weight: 600;
+            color: #e0e0e0;
+            background-color: #1c2a4a;
+            border-radius: 12px;
+            border: 1px solid #3a4a6a;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
         }
         .stButton > button:hover {
-            border-color: #ffffff;
-            background-color: rgba(255, 255, 255, 0.1);
+            background-color: #2a3a5a;
+            border-color: #537895;
+            transform: translateY(-3px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.3);
         }
-        /* Contenedores del Kanban */
-        .kanban-column .stMarkdown {
+        .stButton > button:active {
+            transform: translateY(0px);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        }
+        .stButton > button span {
+            font-size: 2.5em; /* Icon size */
+            margin-bottom: 10px;
+        }
+
+        /* --- Kanban Board (CMMS) Styles --- */
+        [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"] > [data-testid="stVerticalBlock"] {
+            background-color: rgba(42, 58, 90, 0.3);
+            border-radius: 10px;
+            padding: 15px;
+        }
+
+        .kanban-header h3 {
             text-align: center;
             background-color: rgba(0, 0, 0, 0.2);
-            padding: 5px;
-            border-radius: 5px;
-            margin-bottom: 10px;
+            padding: 8px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #537895; /* Accent color for headers */
+        }
+
+        /* Kanban Card Style */
+        .st-emotion-cache-12w0qpk {
+            background-color: #1c2a4a;
+            border: 1px solid #3a4a6a;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            transition: background-color 0.2s;
+        }
+        .st-emotion-cache-12w0qpk:hover {
+             background-color: #2a3a5a;
+        }
+
+        /* --- Sidebar Styles --- */
+        .st-emotion-cache-16txtl3 {
+            background-color: rgba(12, 17, 30, 0.8);
+            backdrop-filter: blur(5px);
         }
     </style>
     """, unsafe_allow_html=True)
@@ -81,7 +138,6 @@ def load_css():
 @st.cache_resource
 def init_connections():
     if not all([os.getenv("OPENAI_API_KEY"), os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY")]):
-        # This will only be visible locally. In cloud, check logs.
         st.error("Faltan variables de entorno. Revisa tu archivo .env o los secrets en Streamlit Cloud.")
         st.stop()
     openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -667,7 +723,7 @@ def cmms_tab():
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.markdown("<div class='kanban-column'><h3>Abierto</h3></div>", unsafe_allow_html=True)
+        st.markdown("<div class='kanban-header'><h3>Abierto</h3></div>", unsafe_allow_html=True)
         for case in [wo for wo in work_orders if wo['status'] == 'Abierto']:
             with st.container(border=True):
                 st.markdown(f"**{case['title']}**")
@@ -680,7 +736,7 @@ def cmms_tab():
                     st.rerun()
 
     with col2:
-        st.markdown("<div class='kanban-column'><h3>En Progreso</h3></div>", unsafe_allow_html=True)
+        st.markdown("<div class='kanban-header'><h3>En Progreso</h3></div>", unsafe_allow_html=True)
         for case in [wo for wo in work_orders if wo['status'] == 'En Progreso']:
             with st.container(border=True):
                 st.markdown(f"**{case['title']}**")
@@ -695,7 +751,7 @@ def cmms_tab():
                     st.rerun()
     
     with col3:
-        st.markdown("<div class='kanban-column'><h3>Cerrado</h3></div>", unsafe_allow_html=True)
+        st.markdown("<div class='kanban-header'><h3>Cerrado</h3></div>", unsafe_allow_html=True)
         for case in [wo for wo in work_orders if wo['status'] == 'Cerrado']:
             with st.container(border=True):
                 st.markdown(f"**{case['title']}**")
@@ -716,7 +772,7 @@ def cmms_tab():
 # --- Navegación Principal y Renderizado de Páginas ---
 
 def render_hub_page():
-    st.title("🛠️ Asistente Técnico Satgarden V2.7")
+    st.title("🛠️ Asistente Técnico Satgarden V2.8")
     st.markdown("""
     **Bienvenido al centro de operaciones técnicas de Satgarden.** Esta plataforma es tu copiloto para la gestión del conocimiento, diagnósticos y operaciones de mantenimiento.
     
@@ -724,30 +780,33 @@ def render_hub_page():
     """)
     st.divider()
 
+    # We use markdown with unsafe_allow_html to create the button text with an icon
     col1, col2, col3 = st.columns(3)
     with col1:
-        if st.button("💬 Consulta Técnica", use_container_width=True):
+        if st.button("<span>💬</span>Consulta Técnica", use_container_width=True):
             st.session_state.page = "Consulta"
             st.rerun()
-        if st.button("📊 Dashboard", use_container_width=True):
+        if st.button("<span>📊</span>Dashboard", use_container_width=True):
             st.session_state.page = "Dashboard"
             st.rerun()
     with col2:
-        if st.button("📋 Gestión de Casos (CMMS)", use_container_width=True):
+        if st.button("<span>📋</span>Gestión de Casos", use_container_width=True):
             st.session_state.page = "CMMS"
             st.rerun()
-        if st.button("⚙️ Mantenimiento Preventivo", use_container_width=True):
+        if st.button("<span>⚙️</span>Mantenimiento Preventivo", use_container_width=True):
             st.session_state.page = "Mantenimiento"
             st.rerun()
     with col3:
-        if st.button("🧮 Calculadora de Estimaciones", use_container_width=True):
+        if st.button("<span>🧮</span>Calculadora", use_container_width=True):
             st.session_state.page = "Calculadora"
             st.rerun()
-        if st.button("📚 Gestión del Conocimiento", use_container_width=True):
+        if st.button("<span>📚</span>Base de Conocimiento", use_container_width=True):
             st.session_state.page = "Conocimiento"
             st.rerun()
+    
+    st.markdown("<br>", unsafe_allow_html=True)
 
-    if st.button("📜 Ver Historial y Verificar", use_container_width=True):
+    if st.button("<span>📜</span>Ver Historial y Verificar", use_container_width=True):
         st.session_state.page = "Historial"
         st.rerun()
 
@@ -755,6 +814,11 @@ def render_hub_page():
 def render_full_app():
     if st.button("⬅️ Volver al Menú Principal"):
         st.session_state.page = "Hub"
+        # Clear specific states when going back to hub to avoid stale data
+        keys_to_clear = ['last_response', 'maintenance_plan', 'last_estimation', 'case_to_close', 'show_case_form', 'verify_item']
+        for key in keys_to_clear:
+            if key in st.session_state:
+                del st.session_state[key]
         st.rerun()
 
     page_map = {
@@ -767,7 +831,6 @@ def render_full_app():
         "Conocimiento": knowledge_management_tab,
     }
     
-    # Render the selected tab's content
     page_function = page_map.get(st.session_state.page)
     if page_function:
         page_function()
@@ -794,11 +857,9 @@ def main():
                 else:
                     st.warning("Por favor, selecciona al menos un archivo PDF.")
     
-    # Initialize page state if not set
     if 'page' not in st.session_state:
         st.session_state.page = "Hub"
 
-    # Render the correct page based on state
     if st.session_state.page == "Hub":
         render_hub_page()
     else:
@@ -806,8 +867,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
 
