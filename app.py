@@ -1,10 +1,9 @@
 """
-ASISTENTE TÉCNICO SATGARDEN V2.9
+ASISTENTE TÉCNICO SATGARDEN V2.10
 Implementación completa de todas las funcionalidades:
-- FIX: Corregido el renderizado de iconos en los botones del menú principal.
+- FIX: Reestructurada la página principal (Hub) con un layout de filas y columnas robusto para evitar roturas de diseño.
+- Corregido el renderizado de iconos en los botones del menú principal.
 - Rediseño completo de la interfaz de usuario (UI/UX).
-- Nueva paleta de colores, tipografía mejorada y rediseño de componentes.
-- Iconos en el menú principal para una mejor usabilidad.
 - Pantalla principal a modo de Hub para una navegación intuitiva.
 - Informes de cierre y descarga en PDF para el módulo CMMS.
 - Módulo de Gestión de Casos (Mini-CMMS) con tablero Kanban.
@@ -42,7 +41,7 @@ except ImportError:
 
 # --- Configuración Inicial ---
 load_dotenv()
-st.set_page_config(page_title="Asistente Satgarden V2.9", page_icon="🛠️", layout="wide")
+st.set_page_config(page_title="Asistente Satgarden V2.10", page_icon="🛠️", layout="wide")
 
 # --- Estilos CSS Personalizados ---
 def load_css():
@@ -776,7 +775,7 @@ def cmms_tab():
 # --- Navegación Principal y Renderizado de Páginas ---
 
 def render_hub_page():
-    st.title("🛠️ Asistente Técnico Satgarden V2.8")
+    st.title("🛠️ Asistente Técnico Satgarden V2.9")
     st.markdown("""
     **Bienvenido al centro de operaciones técnicas de Satgarden.** Esta plataforma es tu copiloto para la gestión del conocimiento, diagnósticos y operaciones de mantenimiento.
     
@@ -784,35 +783,46 @@ def render_hub_page():
     """)
     st.divider()
 
-    # We use a newline character in the button label to separate the icon and text
+    # --- ROW 1 ---
     col1, col2, col3 = st.columns(3)
     with col1:
-        if st.button("💬\nConsulta Técnica", use_container_width=True):
+        if st.button("💬\nConsulta Técnica", use_container_width=True, key="hub_consulta"):
             st.session_state.page = "Consulta"
             st.rerun()
-        if st.button("📊\nDashboard", use_container_width=True):
-            st.session_state.page = "Dashboard"
-            st.rerun()
     with col2:
-        if st.button("📋\nGestión de Casos", use_container_width=True):
+        if st.button("📋\nGestión de Casos", use_container_width=True, key="hub_cmms"):
             st.session_state.page = "CMMS"
             st.rerun()
-        if st.button("⚙️\nMantenimiento Preventivo", use_container_width=True):
-            st.session_state.page = "Mantenimiento"
-            st.rerun()
     with col3:
-        if st.button("🧮\nCalculadora", use_container_width=True):
+        if st.button("🧮\nCalculadora", use_container_width=True, key="hub_calculadora"):
             st.session_state.page = "Calculadora"
             st.rerun()
-        if st.button("📚\nBase de Conocimiento", use_container_width=True):
+
+    st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True) # Spacer
+
+    # --- ROW 2 ---
+    col4, col5, col6 = st.columns(3)
+    with col4:
+        if st.button("📊\nDashboard", use_container_width=True, key="hub_dashboard"):
+            st.session_state.page = "Dashboard"
+            st.rerun()
+    with col5:
+        if st.button("⚙️\nMantenimiento Preventivo", use_container_width=True, key="hub_mantenimiento"):
+            st.session_state.page = "Mantenimiento"
+            st.rerun()
+    with col6:
+        if st.button("📚\nBase de Conocimiento", use_container_width=True, key="hub_conocimiento"):
             st.session_state.page = "Conocimiento"
             st.rerun()
-    
-    st.markdown("<br>", unsafe_allow_html=True)
+            
+    st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True) # Spacer
 
-    if st.button("📜\nVer Historial y Verificar", use_container_width=True):
-        st.session_state.page = "Historial"
-        st.rerun()
+    # --- ROW 3 (Centered) ---
+    _, col_center, _ = st.columns([1, 1.5, 1])
+    with col_center:
+        if st.button("📜\nVer Historial y Verificar", use_container_width=True, key="hub_historial"):
+            st.session_state.page = "Historial"
+            st.rerun()
 
 
 def render_full_app():
@@ -871,40 +881,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-```.
-I'm asking you to make a change to the document. I want you to change the `render_hub_page()` function so that instead of this:
-
-```
-    # We use markdown with unsafe_allow_html to create the button text with an icon
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        if st.button("<span>💬</span>Consulta Técnica", use_container_width=True):
-            st.session_state.page = "Consulta"
-            st.rerun()
-        if st.button("<span>📊</span>Dashboard", use_container_width=True):
-            st.session_state.page = "Dashboard"
-            st.rerun()
-    with col2:
-        if st.button("<span>📋</span>Gestión de Casos", use_container_width=True):
-            st.session_state.page = "CMMS"
-            st.rerun()
-        if st.button("<span>⚙️</span>Mantenimiento Preventivo", use_container_width=True):
-            st.session_state.page = "Mantenimiento"
-            st.rerun()
-    with col3:
-        if st.button("<span>🧮</span>Calculadora", use_container_width=True):
-            st.session_state.page = "Calculadora"
-            st.rerun()
-        if st.button("<span>📚</span>Base de Conocimiento", use_container_width=True):
-            st.session_state.page = "Conocimiento"
-            st.rerun()
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    if st.button("<span>📜</span>Ver Historial y Verificar", use_container_width=True):
-        st.session_state.page = "Historial"
-        st.rerun()
-```
-
-you make it this:
-
