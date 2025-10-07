@@ -1,6 +1,6 @@
 """
-ASISTENTE TÉCNICO SATGARDEN V1.1
-Versión con Calculadora de Tiempos funcional y UI simplificada.
+ASISTENTE TÉCNICO SATGARDEN V1.2
+Versión con pestaña "Base de Conocimiento" para visualizar los documentos cargados.
 """
 
 import os
@@ -368,6 +368,28 @@ def history_tab():
     except Exception as e:
         st.error(f"Error al cargar el historial: {e}")
 
+def knowledge_base_tab():
+    st.header("Base de Conocimiento")
+    st.info("Aquí puedes ver todos los documentos que han sido procesados y cargados en la memoria del asistente.")
+
+    try:
+        response = supabase.table("documents").select("metadata", count="exact").execute()
+        if response.data:
+            # Extraer el nombre del fuente de cada metadata
+            sources = [item['metadata']['source'] for item in response.data if 'metadata' in item and 'source' in item['metadata']]
+            if sources:
+                # Contar la frecuencia de cada fuente (que corresponde al número de chunks)
+                df_counts = pd.Series(sources).value_counts().reset_index()
+                df_counts.columns = ['Documento (Fuente)', 'Nº de Fragmentos']
+
+                st.dataframe(df_counts, use_container_width=True, hide_index=True)
+            else:
+                st.warning("No se encontraron fuentes en los metadatos de los documentos.")
+        else:
+            st.info("La base de conocimiento está vacía. Carga algunos documentos PDF desde la barra lateral.")
+    except Exception as e:
+        st.error(f"Error al consultar la base de conocimiento: {e}")
+
 def admin_sidebar():
     with st.sidebar:
         st.header("Administración")
@@ -400,7 +422,7 @@ def main():
 
     admin_sidebar()
 
-    tab_titles = ["Consulta Técnica", "Calculadora", "Historial"]
+    tab_titles = ["Consulta Técnica", "Calculadora", "Historial", "Base de Conocimiento"]
     tabs = st.tabs(tab_titles)
 
     with tabs[0]:
@@ -412,5 +434,9 @@ def main():
     with tabs[2]:
         history_tab()
 
+    with tabs[3]:
+        knowledge_base_tab()
+
 if __name__ == "__main__":
     main()
+
