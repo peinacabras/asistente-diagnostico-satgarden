@@ -1,3 +1,5 @@
+
+
 """
 ASISTENTE TÉCNICO SATGARDEN V2.13
 Implementación completa de todas las funcionalidades:
