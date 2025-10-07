@@ -1,13 +1,13 @@
 """
-ASISTENTE TÉCNICO SATGARDEN V2.3
+ASISTENTE TÉCNICO SATGARDEN V2.4
 Implementación completa de todas las funcionalidades:
+- Dashboard de Inteligencia Técnica mejorado y optimizado.
 - Añadido texto introductorio bajo el título.
 - Añadido logo de la empresa en la barra lateral.
 - Sistema de Conocimiento Verificado
-- Dashboard de Inteligencia Técnica
 - Generador de Planes de Mantenimiento Preventivo con Exportación a PDF
 - Gestión de la Base de Conocimiento (Carga y Eliminación)
-- Re-implementación de la Calculadora de Estimaciones
+- Calculadora de Estimaciones
 - Descarga de Consultas en PDF
 """
 
@@ -36,7 +36,7 @@ except ImportError:
 
 # --- Configuración Inicial ---
 load_dotenv()
-st.set_page_config(page_title="Asistente Satgarden V2.3", page_icon="🛠️", layout="wide")
+st.set_page_config(page_title="Asistente Satgarden V2.4", page_icon="🛠️", layout="wide")
 
 # --- Conexiones (Cacheado para Rendimiento) ---
 @st.cache_resource
@@ -102,6 +102,9 @@ def ingest_pdf_files(files):
             store_document_chunk(chunk, metadata)
             progress_bar.progress((i + 1) / len(chunks))
         st.success(f"¡{pdf.name} procesado y guardado en la base de conocimiento!")
+    # Limpiar caché del dashboard para que refleje los nuevos documentos si fuera necesario
+    get_dashboard_data.clear()
+
 
 # --- Funciones de IA y Lógica de Negocio ---
 def generate_embedding(text):
@@ -195,6 +198,19 @@ def generate_budget_estimate(trabajo, modelo, desc):
         return None
 
 # --- Funciones de Base de Datos (Supabase) ---
+@st.cache_data(ttl=600) # Cachear datos por 10 minutos para mejorar rendimiento
+def get_dashboard_data():
+    try:
+        response = supabase.table("diagnostics_log").select("*").execute()
+        if response.data:
+            df = pd.DataFrame(response.data)
+            df['created_at'] = pd.to_datetime(df['created_at']).dt.tz_convert('Europe/Madrid')
+            return df
+        return pd.DataFrame()
+    except Exception as e:
+        st.error(f"Error al cargar los datos del dashboard: {e}")
+        return pd.DataFrame()
+
 def search_verified_knowledge(query_text, top_k=1, threshold=0.8):
     embedding = generate_embedding(query_text)
     if not embedding: return None
@@ -234,6 +250,7 @@ def delete_document_by_source(source_name):
     try:
         supabase.table("documents").delete().eq("metadata->>source", source_name).execute()
         st.success(f"¡Documento '{source_name}' y todos sus chunks han sido eliminados!")
+        get_document_list.clear() # Limpiar caché
     except Exception as e:
         st.error(f"Error al eliminar el documento: {e}")
 
@@ -245,6 +262,7 @@ def log_and_get_id(tecnico, modelo, tipo, desc, diag):
         }).select("id").execute()
         if response.data:
             st.toast("Consulta registrada en el historial.")
+            get_dashboard_data.clear() # Limpiar caché del dashboard para que refleje la nueva consulta
             return response.data[0]['id']
         return None
     except Exception as e:
@@ -255,6 +273,7 @@ def update_feedback(log_id, feedback_value):
     try:
         supabase.table("diagnostics_log").update({"feedback": feedback_value}).eq("id", log_id).execute()
         st.toast("¡Gracias por tu feedback!")
+        get_dashboard_data.clear()
     except Exception as e:
         st.error(f"Error al guardar feedback: {e}")
 
@@ -289,14 +308,12 @@ def generate_pdf_report(title, data_dict, content_text):
     
     story.append(Spacer(1, 1 * cm))
     
-    # Limpiar y añadir contenido principal
     cleaned_content = content_text.replace('#', '').replace('*', '')
     for paragraph in cleaned_content.split('\n'):
         if paragraph.strip():
             story.append(Paragraph(paragraph, styles['Normal']))
             story.append(Spacer(1, 0.2 * cm))
 
-    # Espacio para firma
     story.append(Spacer(1, 4 * cm))
     story.append(Paragraph("____________________________", styles['Normal']))
     story.append(Paragraph("Firma del Mecánico", styles['Normal']))
@@ -346,18 +363,9 @@ def consult_tab():
             st.info("ℹ️ Respuesta generada por IA")
         st.markdown(st.session_state['last_response'])
         
-        pdf_buffer = generate_pdf_report(
-            "Informe de Consulta Técnica",
-            st.session_state['last_query_data'],
-            st.session_state['last_response']
-        )
+        pdf_buffer = generate_pdf_report("Informe de Consulta Técnica", st.session_state['last_query_data'], st.session_state['last_response'])
         if pdf_buffer:
-            st.download_button(
-                label="📥 Descargar Informe en PDF",
-                data=pdf_buffer,
-                file_name=f"informe_consulta_{datetime.now().strftime('%Y%m%d')}.pdf",
-                mime="application/pdf"
-            )
+            st.download_button(label="📥 Descargar Informe en PDF", data=pdf_buffer, file_name=f"informe_consulta_{datetime.now().strftime('%Y%m%d')}.pdf", mime="application/pdf")
 
         if not st.session_state.get('verified') and st.session_state.get('log_id') is not None:
             log_id = st.session_state['log_id']
@@ -385,18 +393,9 @@ def maintenance_tab():
         st.subheader("Plan de Mantenimiento Sugerido")
         st.markdown(st.session_state['maintenance_plan'])
         
-        pdf_buffer = generate_pdf_report(
-            "Plan de Mantenimiento Preventivo",
-            st.session_state['maintenance_data'],
-            st.session_state['maintenance_plan']
-        )
+        pdf_buffer = generate_pdf_report("Plan de Mantenimiento Preventivo", st.session_state['maintenance_data'], st.session_state['maintenance_plan'])
         if pdf_buffer:
-            st.download_button(
-                label="📥 Descargar Plan en PDF",
-                data=pdf_buffer,
-                file_name=f"plan_mantenimiento_{st.session_state['maintenance_data']['modelo']}.pdf",
-                mime="application/pdf"
-            )
+            st.download_button(label="📥 Descargar Plan en PDF", data=pdf_buffer, file_name=f"plan_mantenimiento_{st.session_state['maintenance_data']['modelo']}.pdf", mime="application/pdf")
 
 def calculator_tab():
     st.header("Calculadora de Estimaciones")
@@ -432,24 +431,62 @@ def calculator_tab():
 
 def dashboard_tab():
     st.header("Dashboard de Inteligencia Técnica")
-    try:
-        logs = supabase.table("diagnostics_log").select("*", count='exact').execute().data
-        if not logs:
-            st.info("No hay datos suficientes para generar el dashboard.")
-            return
-        df = pd.DataFrame(logs)
-        st.subheader("Métricas Generales")
-        feedback_counts = df['feedback'].value_counts()
-        util = feedback_counts.get(1, 0)
-        no_util = feedback_counts.get(-1, 0)
-        satisfaction = (util / (util + no_util) * 100) if (util + no_util) > 0 else 0
-        st.metric("Satisfacción de Respuestas IA", f"{satisfaction:.1f}%", help="Porcentaje de respuestas marcadas como 'útiles'")
+    st.markdown("Analiza el uso y la efectividad del asistente técnico en tiempo real.")
+
+    df = get_dashboard_data()
+
+    if df.empty:
+        st.info("No hay datos suficientes para generar el dashboard. Realiza algunas consultas primero.")
+        return
+
+    # --- KPIs Principales ---
+    st.subheader("Indicadores Clave de Rendimiento (KPIs)")
+    
+    seven_days_ago = pd.Timestamp.now(tz='Europe/Madrid') - pd.Timedelta(days=7)
+    df_last_7_days = df[df['created_at'] >= seven_days_ago]
+
+    total_queries = len(df)
+    queries_last_7_days = len(df_last_7_days)
+    
+    feedback_counts = df['feedback'].value_counts()
+    util = feedback_counts.get(1, 0)
+    no_util = feedback_counts.get(-1, 0)
+    total_feedback = util + no_util
+    satisfaction = (util / total_feedback * 100) if total_feedback > 0 else 0
+    queries_no_feedback = total_queries - total_feedback
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Total Consultas", total_queries)
+    col2.metric("Consultas (Últ. 7 Días)", queries_last_7_days)
+    col3.metric("Índice de Satisfacción", f"{satisfaction:.1f}%", help="Porcentaje de respuestas marcadas como 'útiles' sobre el total de respuestas valoradas.")
+    col4.metric("Consultas sin Valorar", queries_no_feedback)
+    
+    st.divider()
+
+    # --- Visualizaciones ---
+    col_a, col_b = st.columns(2)
+
+    with col_a:
+        st.subheader("Rendimiento de la IA")
+        if total_feedback > 0:
+            feedback_df = pd.DataFrame({
+                'Valoración': ['Útil', 'No Útil', 'Sin Valorar'],
+                'Cantidad': [util, no_util, queries_no_feedback]
+            })
+            st.bar_chart(feedback_df.set_index('Valoración'))
+        else:
+            st.info("Aún no se ha valorado ninguna respuesta.")
+            
+        st.subheader("Consultas por Técnico")
+        df['tecnico'] = df['tecnico'].fillna('Anónimo')
+        st.bar_chart(df['tecnico'].value_counts().head(10))
+
+    with col_b:
         st.subheader("Máquinas Más Consultadas")
-        st.bar_chart(df['modelo_maquina'].value_counts())
+        st.bar_chart(df['modelo_maquina'].value_counts().head(10))
+
         st.subheader("Tipos de Consulta Frecuentes")
         st.bar_chart(df['tipo_consulta'].value_counts())
-    except Exception as e:
-        st.error(f"Error al generar dashboard: {e}")
 
 def history_tab():
     st.header("Historial y Verificación de Consultas")
@@ -467,8 +504,7 @@ def history_tab():
     if 'verify_item' in st.session_state:
         log_to_verify = st.session_state['verify_item']
         st.subheader("Verificar y Guardar Respuesta")
-        verified_response = st.text_area("Edita la respuesta para guardarla como oficial:",
-                                         value=log_to_verify['diagnostico_ia'], height=200, key=f"text_{log_to_verify['id']}")
+        verified_response = st.text_area("Edita la respuesta para guardarla como oficial:", value=log_to_verify['diagnostico_ia'], height=200, key=f"text_{log_to_verify['id']}")
         verifier = st.text_input("Tu nombre (verificador):", key=f"verifier_{log_to_verify['id']}")
         if st.button("Guardar Conocimiento Verificado", key=f"save_{log_to_verify['id']}"):
             if verifier:
@@ -496,7 +532,7 @@ def knowledge_management_tab():
 
 # --- Aplicación Principal ---
 def main():
-    st.title("🛠️ Asistente Técnico Satgarden V2.3")
+    st.title("🛠️ Asistente Técnico Satgarden V2.4")
     st.markdown("""
     **Bienvenido al Asistente Técnico de Satgarden.** Esta plataforma centraliza todo el conocimiento técnico de la empresa.
     - **Consulta:** Realiza preguntas técnicas sobre cualquier máquina.
@@ -508,10 +544,8 @@ def main():
 
     with st.sidebar:
         try:
-            # Asegúrate de tener un archivo 'logo.png' en la misma carpeta que este script.
             st.image("logo.png", use_container_width=True)
         except Exception:
-            # Si no se encuentra el logo, simplemente no lo muestra.
             pass
 
         st.header("Administración")
@@ -547,3 +581,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
