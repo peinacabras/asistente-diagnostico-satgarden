@@ -1,7 +1,8 @@
 """
-ASISTENTE TÉCNICO SATGARDEN V2.10
+ASISTENTE TÉCNICO SATGARDEN V2.11
 Implementación completa de todas las funcionalidades:
-- FIX: Reestructurada la página principal (Hub) con un layout de filas y columnas robusto para evitar roturas de diseño.
+- FIX: Ajustado el tamaño de la fuente en los botones del Hub para una mejor proporción visual.
+- Reestructurada la página principal (Hub) con un layout de filas y columnas robusto.
 - Corregido el renderizado de iconos en los botones del menú principal.
 - Rediseño completo de la interfaz de usuario (UI/UX).
 - Pantalla principal a modo de Hub para una navegación intuitiva.
@@ -41,7 +42,7 @@ except ImportError:
 
 # --- Configuración Inicial ---
 load_dotenv()
-st.set_page_config(page_title="Asistente Satgarden V2.10", page_icon="🛠️", layout="wide")
+st.set_page_config(page_title="Asistente Satgarden V2.11", page_icon="🛠️", layout="wide")
 
 # --- Estilos CSS Personalizados ---
 def load_css():
@@ -71,8 +72,8 @@ def load_css():
             width: 100%;
             height: 150px; /* Fixed height for buttons */
             padding: 20px;
-            font-size: 1.1em;
-            font-weight: 600;
+            font-size: 1.0em;  /* Reduced text size */
+            font-weight: 500; /* Medium weight, less bold */
             color: #e0e0e0;
             background-color: #1c2a4a;
             border-radius: 12px;
@@ -94,8 +95,8 @@ def load_css():
         }
         /* Style the first line (emoji icon) of the button text */
         .stButton > button p:first-of-type {
-            font-size: 2.5em; /* Icon size */
-            margin-bottom: 10px;
+            font-size: 2.7em; /* Icon size */
+            margin-bottom: 12px; /* Adjusted spacing */
             line-height: 1;
         }
 
@@ -775,7 +776,7 @@ def cmms_tab():
 # --- Navegación Principal y Renderizado de Páginas ---
 
 def render_hub_page():
-    st.title("🛠️ Asistente Técnico Satgarden V2.9")
+    st.title("🛠️ Asistente Técnico Satgarden V2.10")
     st.markdown("""
     **Bienvenido al centro de operaciones técnicas de Satgarden.** Esta plataforma es tu copiloto para la gestión del conocimiento, diagnósticos y operaciones de mantenimiento.
     
@@ -881,3 +882,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
