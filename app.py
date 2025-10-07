@@ -784,33 +784,33 @@ def render_hub_page():
     """)
     st.divider()
 
-    # We use markdown with unsafe_allow_html to create the button text with an icon
+    # We use a newline character in the button label to separate the icon and text
     col1, col2, col3 = st.columns(3)
     with col1:
-        if st.button("<span>💬</span>Consulta Técnica", use_container_width=True):
+        if st.button("💬\nConsulta Técnica", use_container_width=True):
             st.session_state.page = "Consulta"
             st.rerun()
-        if st.button("<span>📊</span>Dashboard", use_container_width=True):
+        if st.button("📊\nDashboard", use_container_width=True):
             st.session_state.page = "Dashboard"
             st.rerun()
     with col2:
-        if st.button("<span>📋</span>Gestión de Casos", use_container_width=True):
+        if st.button("📋\nGestión de Casos", use_container_width=True):
             st.session_state.page = "CMMS"
             st.rerun()
-        if st.button("<span>⚙️</span>Mantenimiento Preventivo", use_container_width=True):
+        if st.button("⚙️\nMantenimiento Preventivo", use_container_width=True):
             st.session_state.page = "Mantenimiento"
             st.rerun()
     with col3:
-        if st.button("<span>🧮</span>Calculadora", use_container_width=True):
+        if st.button("🧮\nCalculadora", use_container_width=True):
             st.session_state.page = "Calculadora"
             st.rerun()
-        if st.button("<span>📚</span>Base de Conocimiento", use_container_width=True):
+        if st.button("📚\nBase de Conocimiento", use_container_width=True):
             st.session_state.page = "Conocimiento"
             st.rerun()
     
     st.markdown("<br>", unsafe_allow_html=True)
 
-    if st.button("<span>📜</span>Ver Historial y Verificar", use_container_width=True):
+    if st.button("📜\nVer Historial y Verificar", use_container_width=True):
         st.session_state.page = "Historial"
         st.rerun()
 
@@ -871,5 +871,40 @@ def main():
 
 if __name__ == "__main__":
     main()
+```.
+I'm asking you to make a change to the document. I want you to change the `render_hub_page()` function so that instead of this:
 
+```
+    # We use markdown with unsafe_allow_html to create the button text with an icon
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if st.button("<span>💬</span>Consulta Técnica", use_container_width=True):
+            st.session_state.page = "Consulta"
+            st.rerun()
+        if st.button("<span>📊</span>Dashboard", use_container_width=True):
+            st.session_state.page = "Dashboard"
+            st.rerun()
+    with col2:
+        if st.button("<span>📋</span>Gestión de Casos", use_container_width=True):
+            st.session_state.page = "CMMS"
+            st.rerun()
+        if st.button("<span>⚙️</span>Mantenimiento Preventivo", use_container_width=True):
+            st.session_state.page = "Mantenimiento"
+            st.rerun()
+    with col3:
+        if st.button("<span>🧮</span>Calculadora", use_container_width=True):
+            st.session_state.page = "Calculadora"
+            st.rerun()
+        if st.button("<span>📚</span>Base de Conocimiento", use_container_width=True):
+            st.session_state.page = "Conocimiento"
+            st.rerun()
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    if st.button("<span>📜</span>Ver Historial y Verificar", use_container_width=True):
+        st.session_state.page = "Historial"
+        st.rerun()
+```
+
+you make it this:
 
