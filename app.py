@@ -1,7 +1,8 @@
 """
-ASISTENTE TÉCNICO SATGARDEN V2.8
+ASISTENTE TÉCNICO SATGARDEN V2.9
 Implementación completa de todas las funcionalidades:
-- NUEVO: Rediseño completo de la interfaz de usuario (UI/UX).
+- FIX: Corregido el renderizado de iconos en los botones del menú principal.
+- Rediseño completo de la interfaz de usuario (UI/UX).
 - Nueva paleta de colores, tipografía mejorada y rediseño de componentes.
 - Iconos en el menú principal para una mejor usabilidad.
 - Pantalla principal a modo de Hub para una navegación intuitiva.
@@ -41,7 +42,7 @@ except ImportError:
 
 # --- Configuración Inicial ---
 load_dotenv()
-st.set_page_config(page_title="Asistente Satgarden V2.8", page_icon="🛠️", layout="wide")
+st.set_page_config(page_title="Asistente Satgarden V2.9", page_icon="🛠️", layout="wide")
 
 # --- Estilos CSS Personalizados ---
 def load_css():
@@ -80,6 +81,7 @@ def load_css():
             cursor: pointer;
             transition: all 0.2s ease-in-out;
             box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            white-space: pre-wrap; /* Ensures the newline character is respected */
         }
         .stButton > button:hover {
             background-color: #2a3a5a;
@@ -91,9 +93,11 @@ def load_css():
             transform: translateY(0px);
             box-shadow: 0 4px 6px rgba(0,0,0,0.2);
         }
-        .stButton > button span {
+        /* Style the first line (emoji icon) of the button text */
+        .stButton > button p:first-of-type {
             font-size: 2.5em; /* Icon size */
             margin-bottom: 10px;
+            line-height: 1;
         }
 
         /* --- Kanban Board (CMMS) Styles --- */
