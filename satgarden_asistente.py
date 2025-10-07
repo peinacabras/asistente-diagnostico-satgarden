@@ -1,5 +1,3 @@
-
-
 """
 ASISTENTE TÉCNICO SATGARDEN V2.13
 Implementación completa de todas las funcionalidades:
@@ -887,3 +885,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
