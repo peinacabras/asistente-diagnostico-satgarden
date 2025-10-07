@@ -1,10 +1,13 @@
 """
-ASISTENTE TÉCNICO SATGARDEN V2.0 (Final)
+ASISTENTE TÉCNICO SATGARDEN V2.2
 Implementación completa de todas las funcionalidades:
-1. Sistema de Conocimiento Verificado
-2. Dashboard de Inteligencia Técnica
-3. Generador de Planes de Mantenimiento Preventivo
-4. Gestión de la Base de Conocimiento (Carga y Eliminación)
+- Añadido logo de la empresa en la barra lateral.
+- Sistema de Conocimiento Verificado
+- Dashboard de Inteligencia Técnica
+- Generador de Planes de Mantenimiento Preventivo con Exportación a PDF
+- Gestión de la Base de Conocimiento (Carga y Eliminación)
+- Re-implementación de la Calculadora de Estimaciones
+- Descarga de Consultas en PDF
 """
 
 import os
@@ -22,16 +25,17 @@ from io import BytesIO
 # --- Dependencias Opcionales para PDF ---
 try:
     from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import cm
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+    from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER
     REPORTLAB_AVAILABLE = True
 except ImportError:
     REPORTLAB_AVAILABLE = False
 
 # --- Configuración Inicial ---
 load_dotenv()
-st.set_page_config(page_title="Asistente Satgarden V2", page_icon="🛠️", layout="wide")
+st.set_page_config(page_title="Asistente Satgarden V2.2", page_icon="🛠️", layout="wide")
 
 # --- Conexiones (Cacheado para Rendimiento) ---
 @st.cache_resource
@@ -155,9 +159,42 @@ def generate_maintenance_plan(modelo, horas):
     except Exception as e:
         return f"Error generando el plan de mantenimiento: {e}"
 
+def generate_budget_estimate(trabajo, modelo, desc):
+    context_query = f"Historial de reparaciones o mantenimientos para {modelo} sobre {desc}"
+    docs = search_document_knowledge(context_query, top_k=3)
+    context = "\n\n---\n\n".join([doc['content'] for doc in docs]) if docs else "No hay historial relevante."
+    prompt = f"""
+    CONTEXTO DE TRABAJOS SIMILARES:
+    {context}
+
+    TAREA:
+    Actúa como un perito técnico experto. Analiza la siguiente solicitud de trabajo y el contexto de casos pasados.
+    - Trabajo: {trabajo}
+    - Máquina: {modelo}
+    - Descripción: {desc}
+
+    Devuelve tu estimación únicamente en formato JSON, sin texto adicional. El JSON debe tener la siguiente estructura:
+    {{
+        "tiempo_horas": float,
+        "justificacion_tiempo": "string",
+        "dificultad": "string (Baja, Media, Alta, Muy Alta)"
+    }}
+    """
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-4-turbo",
+            messages=[{"role": "system", "content": "You are an expert technical estimator that only responds in JSON."},
+                      {"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.1
+        )
+        return json.loads(response.choices[0].message.content)
+    except Exception as e:
+        st.error(f"Error al generar estimación: {e}")
+        return None
+
 # --- Funciones de Base de Datos (Supabase) ---
 def search_verified_knowledge(query_text, top_k=1, threshold=0.8):
-    # ... (código sin cambios)
     embedding = generate_embedding(query_text)
     if not embedding: return None
     try:
@@ -172,7 +209,6 @@ def search_document_knowledge(query_text, top_k=5):
     embedding = generate_embedding(query_text)
     if not embedding: return []
     try:
-        # CORRECCIÓN: Se elimina 'match_threshold' para que coincida con la función SQL base.
         result = supabase.rpc('match_documents', {
             'query_embedding': embedding, 'match_count': top_k
         }).execute()
@@ -183,7 +219,7 @@ def search_document_knowledge(query_text, top_k=5):
 
 def get_document_list():
     try:
-        response = supabase.table("documents").select("metadata").execute()
+        response = supabase.table("documents").select("metadata", count='exact').execute()
         if response.data:
             sources = [d['metadata']['source'] for d in response.data]
             df = pd.DataFrame(sources, columns=['source'])
@@ -195,20 +231,21 @@ def get_document_list():
 
 def delete_document_by_source(source_name):
     try:
-        # Usamos ->> para tratar el valor JSON como texto en la comparación
         supabase.table("documents").delete().eq("metadata->>source", source_name).execute()
         st.success(f"¡Documento '{source_name}' y todos sus chunks han sido eliminados!")
     except Exception as e:
         st.error(f"Error al eliminar el documento: {e}")
 
-# ... (El resto de funciones de DB como log_and_get_id, update_feedback, etc., se mantienen sin cambios)
 def log_and_get_id(tecnico, modelo, tipo, desc, diag):
     try:
         response = supabase.table("diagnostics_log").insert({
             "tecnico": tecnico, "modelo_maquina": modelo, "tipo_consulta": tipo,
             "descripcion_averia": desc, "diagnostico_ia": diag
         }).select("id").execute()
-        return response.data[0]['id'] if response.data else None
+        if response.data:
+            st.toast("Consulta registrada en el historial.")
+            return response.data[0]['id']
+        return None
     except Exception as e:
         st.warning(f"No se pudo registrar el diagnóstico: {e}")
         return None
@@ -232,21 +269,55 @@ def save_verified_knowledge(query, response, verifier):
         except Exception as e:
             st.error(f"Error al guardar conocimiento verificado: {e}")
 
-# --- Pestañas de la UI ---
+# --- Funciones de UI y Pestañas ---
+def generate_pdf_report(title, data_dict, content_text):
+    if not REPORTLAB_AVAILABLE:
+        st.error("La librería 'reportlab' no está instalada. No se puede generar el PDF.")
+        return None
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
+    styles = getSampleStyleSheet()
+    story = []
+
+    story.append(Paragraph(title, styles['h1']))
+    story.append(Paragraph(f"Fecha: {datetime.now().strftime('%d/%m/%Y')}", styles['Normal']))
+    story.append(Spacer(1, 0.5 * cm))
+
+    for key, value in data_dict.items():
+        story.append(Paragraph(f"<b>{key.replace('_', ' ').title()}:</b> {value}", styles['Normal']))
+    
+    story.append(Spacer(1, 1 * cm))
+    
+    # Limpiar y añadir contenido principal
+    cleaned_content = content_text.replace('#', '').replace('*', '')
+    for paragraph in cleaned_content.split('\n'):
+        if paragraph.strip():
+            story.append(Paragraph(paragraph, styles['Normal']))
+            story.append(Spacer(1, 0.2 * cm))
+
+    # Espacio para firma
+    story.append(Spacer(1, 4 * cm))
+    story.append(Paragraph("____________________________", styles['Normal']))
+    story.append(Paragraph("Firma del Mecánico", styles['Normal']))
+    
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
 def consult_tab():
-    # ... (código sin cambios)
     st.header("Consulta Técnica")
     if 'last_response' in st.session_state and st.button("Nueva Consulta"):
         for key in ['last_response', 'last_query_data', 'context_docs', 'verified', 'log_id']:
-            if key in st.session_state:
-                del st.session_state[key]
+            if key in st.session_state: del st.session_state[key]
         st.rerun()
+        
     with st.form("consulta_form"):
         modelo = st.text_input("Modelo de Máquina")
         tipo = st.selectbox("Tipo de Consulta", ["Avería", "Mantenimiento", "Recambios", "Despiece"])
         consulta = st.text_area("Descripción de la consulta", height=100)
         tecnico = st.text_input("Tu Nombre (Técnico)")
         submitted = st.form_submit_button("Buscar Solución", type="primary", use_container_width=True)
+
     if submitted and consulta:
         full_query = f"Modelo: {modelo or 'N/E'}\nTipo: {tipo}\n{consulta}"
         st.session_state['last_query_data'] = {'tecnico': tecnico, 'modelo': modelo, 'consulta': consulta, 'tipo': tipo}
@@ -265,6 +336,7 @@ def consult_tab():
         log_id = log_and_get_id(tecnico, modelo, tipo, consulta, st.session_state['last_response'])
         st.session_state['log_id'] = log_id
         st.rerun()
+
     if 'last_response' in st.session_state:
         st.divider()
         if st.session_state.get('verified'):
@@ -273,7 +345,19 @@ def consult_tab():
             st.info("ℹ️ Respuesta generada por IA")
         st.markdown(st.session_state['last_response'])
         
-        # CORRECCIÓN: Solo mostrar botones de feedback si el log_id es válido.
+        pdf_buffer = generate_pdf_report(
+            "Informe de Consulta Técnica",
+            st.session_state['last_query_data'],
+            st.session_state['last_response']
+        )
+        if pdf_buffer:
+            st.download_button(
+                label="📥 Descargar Informe en PDF",
+                data=pdf_buffer,
+                file_name=f"informe_consulta_{datetime.now().strftime('%Y%m%d')}.pdf",
+                mime="application/pdf"
+            )
+
         if not st.session_state.get('verified') and st.session_state.get('log_id') is not None:
             log_id = st.session_state['log_id']
             st.write("¿Fue útil esta respuesta?")
@@ -283,7 +367,7 @@ def consult_tab():
 
 def maintenance_tab():
     st.header("Generador de Planes de Mantenimiento Preventivo")
-    st.markdown("Selecciona una máquina y sus horas de uso para generar un plan de mantenimiento basado en los manuales de la base de conocimiento.")
+    st.markdown("Selecciona una máquina y sus horas de uso para generar un plan de mantenimiento basado en los manuales.")
     with st.form("maintenance_form"):
         modelo = st.text_input("Modelo de la Máquina")
         horas = st.number_input("Horas de Uso Actuales", min_value=1, step=10)
@@ -293,19 +377,62 @@ def maintenance_tab():
         with st.spinner(f"Generando plan de mantenimiento para {modelo} con {horas}h..."):
             plan = generate_maintenance_plan(modelo, horas)
             st.session_state['maintenance_plan'] = plan
-            st.rerun()
+            st.session_state['maintenance_data'] = {'modelo': modelo, 'horas_de_uso': horas}
 
     if 'maintenance_plan' in st.session_state:
         st.divider()
         st.subheader("Plan de Mantenimiento Sugerido")
         st.markdown(st.session_state['maintenance_plan'])
-        # Falta implementar la descarga a PDF
+        
+        pdf_buffer = generate_pdf_report(
+            "Plan de Mantenimiento Preventivo",
+            st.session_state['maintenance_data'],
+            st.session_state['maintenance_plan']
+        )
+        if pdf_buffer:
+            st.download_button(
+                label="📥 Descargar Plan en PDF",
+                data=pdf_buffer,
+                file_name=f"plan_mantenimiento_{st.session_state['maintenance_data']['modelo']}.pdf",
+                mime="application/pdf"
+            )
+
+def calculator_tab():
+    st.header("Calculadora de Estimaciones")
+    st.markdown("Obtén una estimación de tiempo y coste para un trabajo técnico.")
+    with st.form("calculator_form"):
+        modelo_calc = st.text_input("Modelo de la Máquina")
+        tipo_trabajo = st.selectbox("Tipo de Trabajo", ["Reparación", "Mantenimiento"])
+        desc_trabajo = st.text_area("Descripción del Trabajo a Realizar", height=100)
+        tarifa_hora = st.number_input("Tarifa por Hora del Mecánico (€)", min_value=1.0, value=45.0, step=0.5)
+        submitted_calc = st.form_submit_button("Calcular Estimación", use_container_width=True)
+
+    if submitted_calc and desc_trabajo:
+        with st.spinner("Generando estimación con IA..."):
+            estimacion = generate_budget_estimate(tipo_trabajo, modelo_calc, desc_trabajo)
+            st.session_state['last_estimation'] = estimacion
+            st.session_state['last_rate'] = tarifa_hora
+
+    if 'last_estimation' in st.session_state and st.session_state['last_estimation']:
+        est = st.session_state['last_estimation']
+        rate = st.session_state['last_rate']
+        st.divider()
+        st.subheader("Resultados de la Estimación")
+        tiempo = est.get('tiempo_horas', 0)
+        coste_mano_obra = tiempo * rate
+        
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Tiempo Estimado", f"{tiempo:.1f} horas")
+        col2.metric("Coste Mano de Obra", f"{coste_mano_obra:.2f} €")
+        col3.metric("Dificultad", est.get('dificultad', 'N/A'))
+        
+        with st.expander("Justificación de la estimación"):
+            st.write(est.get('justificacion_tiempo', 'Sin justificación.'))
 
 def dashboard_tab():
-    # ... (código sin cambios)
     st.header("Dashboard de Inteligencia Técnica")
     try:
-        logs = supabase.table("diagnostics_log").select("*").execute().data
+        logs = supabase.table("diagnostics_log").select("*", count='exact').execute().data
         if not logs:
             st.info("No hay datos suficientes para generar el dashboard.")
             return
@@ -324,7 +451,6 @@ def dashboard_tab():
         st.error(f"Error al generar dashboard: {e}")
 
 def history_tab():
-    # ... (código sin cambios)
     st.header("Historial y Verificación de Consultas")
     try:
         logs = supabase.table("diagnostics_log").select("*").order("created_at", desc=True).limit(20).execute().data
@@ -369,9 +495,16 @@ def knowledge_management_tab():
 
 # --- Aplicación Principal ---
 def main():
-    st.title("🛠️ Asistente Técnico Satgarden V2.0")
+    st.title("🛠️ Asistente Técnico Satgarden V2.2")
 
     with st.sidebar:
+        try:
+            # Asegúrate de tener un archivo 'logo.png' en la misma carpeta que este script.
+            st.image("logo.png", use_column_width=True)
+        except Exception:
+            # Si no se encuentra el logo, simplemente no lo muestra.
+            pass
+
         st.header("Administración")
         with st.expander("Cargar Documentos", expanded=True):
             uploaded_files = st.file_uploader("Sube manuales en formato PDF", type=['pdf'], accept_multiple_files=True)
@@ -384,6 +517,7 @@ def main():
     tabs = st.tabs([
         "Consulta", 
         "Mantenimiento Preventivo", 
+        "Calculadora",
         "Dashboard", 
         "Historial y Verificación", 
         "Gestión de Conocimiento"
@@ -394,10 +528,12 @@ def main():
     with tabs[1]:
         maintenance_tab()
     with tabs[2]:
-        dashboard_tab()
+        calculator_tab()
     with tabs[3]:
-        history_tab()
+        dashboard_tab()
     with tabs[4]:
+        history_tab()
+    with tabs[5]:
         knowledge_management_tab()
 
 if __name__ == "__main__":
