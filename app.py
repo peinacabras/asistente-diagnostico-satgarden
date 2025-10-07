@@ -1,7 +1,9 @@
 """
-ASISTENTE TÉCNICO SATGARDEN V2.6
+ASISTENTE TÉCNICO SATGARDEN V2.7
 Implementación completa de todas las funcionalidades:
-- NUEVO: Informes de cierre y descarga en PDF para el módulo CMMS.
+- NUEVO: Pantalla principal a modo de Hub para una navegación intuitiva.
+- NUEVO: Diseño mejorado con fondo degradado.
+- Informes de cierre y descarga en PDF para el módulo CMMS.
 - Módulo de Gestión de Casos (Mini-CMMS) con tablero Kanban.
 - Integración para crear casos directamente desde las consultas.
 - Dashboard de Inteligencia Técnica mejorado y optimizado.
@@ -39,7 +41,41 @@ except ImportError:
 
 # --- Configuración Inicial ---
 load_dotenv()
-st.set_page_config(page_title="Asistente Satgarden V2.6", page_icon="🛠️", layout="wide")
+st.set_page_config(page_title="Asistente Satgarden V2.7", page_icon="🛠️", layout="wide")
+
+# --- Estilos CSS Personalizados ---
+def load_css():
+    st.markdown("""
+    <style>
+        /* Gradiente de fondo para toda la aplicación */
+        .stApp {
+            background-image: linear-gradient(to top right, #2c3e50, #4a00e0);
+            background-attachment: fixed;
+            background-size: cover;
+        }
+        /* Estilo para los botones del Hub */
+        .stButton > button {
+            border-radius: 10px;
+            padding: 20px 25px;
+            font-size: 1.2em;
+            font-weight: bold;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            transition: all 0.3s ease-in-out;
+        }
+        .stButton > button:hover {
+            border-color: #ffffff;
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        /* Contenedores del Kanban */
+        .kanban-column .stMarkdown {
+            text-align: center;
+            background-color: rgba(0, 0, 0, 0.2);
+            padding: 5px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+    </style>
+    """, unsafe_allow_html=True)
 
 # --- Conexiones (Cacheado para Rendimiento) ---
 @st.cache_resource
@@ -731,7 +767,6 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
 
 
