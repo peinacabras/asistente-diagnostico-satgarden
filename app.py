@@ -1,4 +1,4 @@
-""" 
+"""
 ASISTENTE TÉCNICO SATGARDEN V2.7
 Implementación completa de todas las funcionalidades:
 - NUEVO: Pantalla principal a modo de Hub para una navegación intuitiva.
