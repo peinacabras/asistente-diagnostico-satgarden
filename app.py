@@ -272,8 +272,11 @@ def consult_tab():
         else:
             st.info("ℹ️ Respuesta generada por IA")
         st.markdown(st.session_state['last_response'])
-        if not st.session_state.get('verified') and 'log_id' in st.session_state:
+        
+        # CORRECCIÓN: Solo mostrar botones de feedback si el log_id es válido.
+        if not st.session_state.get('verified') and st.session_state.get('log_id') is not None:
             log_id = st.session_state['log_id']
+            st.write("¿Fue útil esta respuesta?")
             cols = st.columns(10)
             cols[0].button("👍", on_click=update_feedback, args=(log_id, 1), key=f"up_{log_id}")
             cols[1].button("👎", on_click=update_feedback, args=(log_id, -1), key=f"down_{log_id}")
@@ -399,3 +402,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
