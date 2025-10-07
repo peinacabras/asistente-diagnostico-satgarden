@@ -148,35 +148,6 @@ def init_connections():
     supabase_client = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
     return openai_client, supabase_client
 
-openai_client, supabase = init_connections()
-EMBEDDING_MODEL = "text-embedding-3-small"
-
-
-# --- Funciones de Ingesta y Procesamiento de Documentos ---
-def extract_text_from_pdf(file_bytes):
-    text = ""
-    try:
-        pdf_reader = PyPDF2.PdfReader(file_bytes)
-        for page in pdf_reader.pages:
-            page_text = page.extract_text()
-            if page_text:
-                text += re.sub(r'\s+', ' ', page_text.replace('\x00', '')) + "\n\n"
-    except Exception as e:
-        st.error(f"Error extrayendo texto del PDF: {e}")
-    return text.strip()
-
-def chunk_text(text, chunk_size=2000, overlap=200):
-    if not text or len(text) < 100: return []
-    chunks = []
-    start = 0
-    while start < len(text):
-        end = start + chunk_size
-        chunks.append(text[start:end])
-        start += chunk_size - overlap
-    return [c for c in chunks if len(c) > 100]
-
-def store_document_chunk(content, metadata):
-    embedding = generate_embedding(content)
     if embedding:
         try:
             supabase.table("documents").insert({
