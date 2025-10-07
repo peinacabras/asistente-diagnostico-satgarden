@@ -1,6 +1,7 @@
 """
-ASISTENTE TÉCNICO SATGARDEN V2.2
+ASISTENTE TÉCNICO SATGARDEN V2.3
 Implementación completa de todas las funcionalidades:
+- Añadido texto introductorio bajo el título.
 - Añadido logo de la empresa en la barra lateral.
 - Sistema de Conocimiento Verificado
 - Dashboard de Inteligencia Técnica
@@ -35,7 +36,7 @@ except ImportError:
 
 # --- Configuración Inicial ---
 load_dotenv()
-st.set_page_config(page_title="Asistente Satgarden V2.2", page_icon="🛠️", layout="wide")
+st.set_page_config(page_title="Asistente Satgarden V2.3", page_icon="🛠️", layout="wide")
 
 # --- Conexiones (Cacheado para Rendimiento) ---
 @st.cache_resource
@@ -495,12 +496,20 @@ def knowledge_management_tab():
 
 # --- Aplicación Principal ---
 def main():
-    st.title("🛠️ Asistente Técnico Satgarden V2.2")
+    st.title("🛠️ Asistente Técnico Satgarden V2.3")
+    st.markdown("""
+    **Bienvenido al Asistente Técnico de Satgarden.** Esta plataforma centraliza todo el conocimiento técnico de la empresa.
+    - **Consulta:** Realiza preguntas técnicas sobre cualquier máquina.
+    - **Mantenimiento Preventivo:** Genera planes de mantenimiento basados en horas de uso.
+    - **Calculadora:** Estima tiempos y costes para reparaciones o mantenimientos.
+    - **Utiliza la barra lateral** para cargar nuevos manuales en PDF.
+    """)
+    st.divider()
 
     with st.sidebar:
         try:
             # Asegúrate de tener un archivo 'logo.png' en la misma carpeta que este script.
-            st.image("logo.png", use_column_width=True)
+            st.image("logo.png", use_container_width=True)
         except Exception:
             # Si no se encuentra el logo, simplemente no lo muestra.
             pass
@@ -538,4 +547,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
