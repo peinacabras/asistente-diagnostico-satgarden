@@ -81,7 +81,8 @@ def load_css():
 @st.cache_resource
 def init_connections():
     if not all([os.getenv("OPENAI_API_KEY"), os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY")]):
-        st.error("Faltan variables de entorno. Revisa tu archivo .env.")
+        # This will only be visible locally. In cloud, check logs.
+        st.error("Faltan variables de entorno. Revisa tu archivo .env o los secrets en Streamlit Cloud.")
         st.stop()
     openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     supabase_client = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
@@ -664,9 +665,9 @@ def cmms_tab():
         return
 
     col1, col2, col3 = st.columns(3)
-
+    
     with col1:
-        st.markdown("<h3 style='text-align: center;'>Abierto</h3>", unsafe_allow_html=True)
+        st.markdown("<div class='kanban-column'><h3>Abierto</h3></div>", unsafe_allow_html=True)
         for case in [wo for wo in work_orders if wo['status'] == 'Abierto']:
             with st.container(border=True):
                 st.markdown(f"**{case['title']}**")
@@ -679,7 +680,7 @@ def cmms_tab():
                     st.rerun()
 
     with col2:
-        st.markdown("<h3 style='text-align: center;'>En Progreso</h3>", unsafe_allow_html=True)
+        st.markdown("<div class='kanban-column'><h3>En Progreso</h3></div>", unsafe_allow_html=True)
         for case in [wo for wo in work_orders if wo['status'] == 'En Progreso']:
             with st.container(border=True):
                 st.markdown(f"**{case['title']}**")
@@ -694,7 +695,7 @@ def cmms_tab():
                     st.rerun()
     
     with col3:
-        st.markdown("<h3 style='text-align: center;'>Cerrado</h3>", unsafe_allow_html=True)
+        st.markdown("<div class='kanban-column'><h3>Cerrado</h3></div>", unsafe_allow_html=True)
         for case in [wo for wo in work_orders if wo['status'] == 'Cerrado']:
             with st.container(border=True):
                 st.markdown(f"**{case['title']}**")
@@ -712,25 +713,78 @@ def cmms_tab():
                         key=f"pdf_{case['id']}"
                     )
 
+# --- Navegación Principal y Renderizado de Páginas ---
 
-# --- Aplicación Principal ---
-def main():
-    st.title("🛠️ Asistente Técnico Satgarden V2.6")
+def render_hub_page():
+    st.title("🛠️ Asistente Técnico Satgarden V2.7")
     st.markdown("""
-    **Bienvenido al Asistente Técnico de Satgarden.** Esta plataforma centraliza todo el conocimiento técnico de la empresa.
-    - **Consulta:** Realiza preguntas técnicas sobre cualquier máquina.
-    - **Gestión de Casos:** Crea y gestiona órdenes de trabajo en un tablero visual.
-    - **Mantenimiento Preventivo:** Genera planes de mantenimiento basados en horas de uso.
-    - **Calculadora:** Estima tiempos y costes para reparaciones o mantenimientos.
-    - **Utiliza la barra lateral** para cargar nuevos manuales en PDF.
+    **Bienvenido al centro de operaciones técnicas de Satgarden.** Esta plataforma es tu copiloto para la gestión del conocimiento, diagnósticos y operaciones de mantenimiento.
+    
+    Selecciona una herramienta para empezar:
     """)
     st.divider()
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if st.button("💬 Consulta Técnica", use_container_width=True):
+            st.session_state.page = "Consulta"
+            st.rerun()
+        if st.button("📊 Dashboard", use_container_width=True):
+            st.session_state.page = "Dashboard"
+            st.rerun()
+    with col2:
+        if st.button("📋 Gestión de Casos (CMMS)", use_container_width=True):
+            st.session_state.page = "CMMS"
+            st.rerun()
+        if st.button("⚙️ Mantenimiento Preventivo", use_container_width=True):
+            st.session_state.page = "Mantenimiento"
+            st.rerun()
+    with col3:
+        if st.button("🧮 Calculadora de Estimaciones", use_container_width=True):
+            st.session_state.page = "Calculadora"
+            st.rerun()
+        if st.button("📚 Gestión del Conocimiento", use_container_width=True):
+            st.session_state.page = "Conocimiento"
+            st.rerun()
+
+    if st.button("📜 Ver Historial y Verificar", use_container_width=True):
+        st.session_state.page = "Historial"
+        st.rerun()
+
+
+def render_full_app():
+    if st.button("⬅️ Volver al Menú Principal"):
+        st.session_state.page = "Hub"
+        st.rerun()
+
+    page_map = {
+        "Consulta": consult_tab,
+        "CMMS": cmms_tab,
+        "Mantenimiento": maintenance_tab,
+        "Calculadora": calculator_tab,
+        "Dashboard": dashboard_tab,
+        "Historial": history_tab,
+        "Conocimiento": knowledge_management_tab,
+    }
+    
+    # Render the selected tab's content
+    page_function = page_map.get(st.session_state.page)
+    if page_function:
+        page_function()
+    else:
+        st.error("Página no encontrada.")
+        st.session_state.page = "Hub"
+        st.rerun()
+
+
+def main():
+    load_css()
 
     with st.sidebar:
         try:
             st.image("logo.png", use_container_width=True)
         except Exception:
-            pass
+            pass # Fails silently if logo is not found
         st.header("Administración")
         with st.expander("Cargar Documentos", expanded=True):
             uploaded_files = st.file_uploader("Sube manuales en formato PDF", type=['pdf'], accept_multiple_files=True)
@@ -740,33 +794,20 @@ def main():
                 else:
                     st.warning("Por favor, selecciona al menos un archivo PDF.")
     
-    tabs = st.tabs([
-        "Consulta", 
-        "Gestión de Casos (CMMS)",
-        "Mantenimiento Preventivo", 
-        "Calculadora",
-        "Dashboard", 
-        "Historial y Verificación", 
-        "Gestión de Conocimiento"
-    ])
+    # Initialize page state if not set
+    if 'page' not in st.session_state:
+        st.session_state.page = "Hub"
 
-    with tabs[0]:
-        consult_tab()
-    with tabs[1]:
-        cmms_tab()
-    with tabs[2]:
-        maintenance_tab()
-    with tabs[3]:
-        calculator_tab()
-    with tabs[4]:
-        dashboard_tab()
-    with tabs[5]:
-        history_tab()
-    with tabs[6]:
-        knowledge_management_tab()
+    # Render the correct page based on state
+    if st.session_state.page == "Hub":
+        render_hub_page()
+    else:
+        render_full_app()
 
 if __name__ == "__main__":
     main()
+
+
 
 
 
