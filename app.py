@@ -169,12 +169,12 @@ def search_verified_knowledge(query_text, top_k=1, threshold=0.8):
         return None
 
 def search_document_knowledge(query_text, top_k=5):
-    # ... (código sin cambios)
     embedding = generate_embedding(query_text)
     if not embedding: return []
     try:
+        # CORRECCIÓN: Se elimina 'match_threshold' para que coincida con la función SQL base.
         result = supabase.rpc('match_documents', {
-            'query_embedding': embedding, 'match_count': top_k, 'match_threshold': 0.75
+            'query_embedding': embedding, 'match_count': top_k
         }).execute()
         return result.data if result.data else []
     except Exception as e:
@@ -399,5 +399,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
