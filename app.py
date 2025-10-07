@@ -1,7 +1,7 @@
 """
-ASISTENTE TÉCNICO SATGARDEN V2.11
+ASISTENTE TÉCNICO SATGARDEN V2.12
 Implementación completa de todas las funcionalidades:
-- FIX: Ajustado el tamaño de la fuente en los botones del Hub para una mejor proporción visual.
+- FIX: Ajuste final de proporciones en los botones del Hub para un diseño más refinado.
 - Reestructurada la página principal (Hub) con un layout de filas y columnas robusto.
 - Corregido el renderizado de iconos en los botones del menú principal.
 - Rediseño completo de la interfaz de usuario (UI/UX).
@@ -42,7 +42,7 @@ except ImportError:
 
 # --- Configuración Inicial ---
 load_dotenv()
-st.set_page_config(page_title="Asistente Satgarden V2.11", page_icon="🛠️", layout="wide")
+st.set_page_config(page_title="Asistente Satgarden V2.12", page_icon="🛠️", layout="wide")
 
 # --- Estilos CSS Personalizados ---
 def load_css():
@@ -70,10 +70,10 @@ def load_css():
             justify-content: center;
             text-align: center;
             width: 100%;
-            height: 150px; /* Fixed height for buttons */
-            padding: 20px;
-            font-size: 1.0em;  /* Reduced text size */
-            font-weight: 500; /* Medium weight, less bold */
+            height: 140px; /* Reduced height */
+            padding: 15px;
+            font-size: 0.9em;  /* Final text size */
+            font-weight: 400; /* Normal weight */
             color: #e0e0e0;
             background-color: #1c2a4a;
             border-radius: 12px;
@@ -95,8 +95,8 @@ def load_css():
         }
         /* Style the first line (emoji icon) of the button text */
         .stButton > button p:first-of-type {
-            font-size: 2.7em; /* Icon size */
-            margin-bottom: 12px; /* Adjusted spacing */
+            font-size: 3.0em; /* Larger icon size */
+            margin-bottom: 10px; /* Adjusted spacing */
             line-height: 1;
         }
 
@@ -882,4 +882,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
