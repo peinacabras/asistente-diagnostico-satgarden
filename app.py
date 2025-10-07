@@ -1,6 +1,8 @@
 """
-ASISTENTE TÉCNICO SATGARDEN V2.4
+ASISTENTE TÉCNICO SATGARDEN V2.5
 Implementación completa de todas las funcionalidades:
+- NUEVO: Módulo de Gestión de Casos (Mini-CMMS) con tablero Kanban.
+- Integración para crear casos directamente desde las consultas.
 - Dashboard de Inteligencia Técnica mejorado y optimizado.
 - Añadido texto introductorio bajo el título.
 - Añadido logo de la empresa en la barra lateral.
@@ -36,7 +38,7 @@ except ImportError:
 
 # --- Configuración Inicial ---
 load_dotenv()
-st.set_page_config(page_title="Asistente Satgarden V2.4", page_icon="🛠️", layout="wide")
+st.set_page_config(page_title="Asistente Satgarden V2.5", page_icon="🛠️", layout="wide")
 
 # --- Conexiones (Cacheado para Rendimiento) ---
 @st.cache_resource
@@ -102,7 +104,6 @@ def ingest_pdf_files(files):
             store_document_chunk(chunk, metadata)
             progress_bar.progress((i + 1) / len(chunks))
         st.success(f"¡{pdf.name} procesado y guardado en la base de conocimiento!")
-    # Limpiar caché del dashboard para que refleje los nuevos documentos si fuera necesario
     get_dashboard_data.clear()
 
 
@@ -198,7 +199,7 @@ def generate_budget_estimate(trabajo, modelo, desc):
         return None
 
 # --- Funciones de Base de Datos (Supabase) ---
-@st.cache_data(ttl=600) # Cachear datos por 10 minutos para mejorar rendimiento
+@st.cache_data(ttl=600)
 def get_dashboard_data():
     try:
         response = supabase.table("diagnostics_log").select("*").execute()
@@ -211,13 +212,44 @@ def get_dashboard_data():
         st.error(f"Error al cargar los datos del dashboard: {e}")
         return pd.DataFrame()
 
+@st.cache_data(ttl=300)
+def get_work_orders():
+    try:
+        response = supabase.table("work_orders").select("*").order("created_at", desc=True).execute()
+        return response.data if response.data else []
+    except Exception as e:
+        st.error(f"Error al cargar los casos de trabajo: {e}")
+        return []
+
+def create_work_order(title, description, machine_model, work_type, assigned_to, priority, related_consultation_id=None):
+    try:
+        supabase.table("work_orders").insert({
+            "title": title,
+            "description": description,
+            "machine_model": machine_model,
+            "work_type": work_type,
+            "assigned_to": assigned_to,
+            "priority": priority,
+            "related_consultation_id": related_consultation_id
+        }).execute()
+        st.success("¡Nuevo caso de trabajo creado con éxito!")
+        get_work_orders.clear() # Limpiar caché para refrescar el tablero
+    except Exception as e:
+        st.error(f"Error al crear el caso de trabajo: {e}")
+
+def update_work_order_status(order_id, new_status):
+    try:
+        supabase.table("work_orders").update({"status": new_status}).eq("id", order_id).execute()
+        st.toast(f"Caso #{order_id} actualizado a '{new_status}'")
+        get_work_orders.clear()
+    except Exception as e:
+        st.error(f"Error al actualizar el estado del caso: {e}")
+
 def search_verified_knowledge(query_text, top_k=1, threshold=0.8):
     embedding = generate_embedding(query_text)
     if not embedding: return None
     try:
-        result = supabase.rpc('match_verified_documents', {
-            'query_embedding': embedding, 'match_count': top_k, 'match_threshold': threshold
-        }).execute()
+        result = supabase.rpc('match_verified_documents', {'query_embedding': embedding, 'match_count': top_k, 'match_threshold': threshold}).execute()
         return result.data[0] if result.data else None
     except Exception:
         return None
@@ -226,9 +258,7 @@ def search_document_knowledge(query_text, top_k=5):
     embedding = generate_embedding(query_text)
     if not embedding: return []
     try:
-        result = supabase.rpc('match_documents', {
-            'query_embedding': embedding, 'match_count': top_k
-        }).execute()
+        result = supabase.rpc('match_documents', {'query_embedding': embedding, 'match_count': top_k}).execute()
         return result.data if result.data else []
     except Exception as e:
         st.error(f"Error en la búsqueda de documentos: {e}")
@@ -250,19 +280,16 @@ def delete_document_by_source(source_name):
     try:
         supabase.table("documents").delete().eq("metadata->>source", source_name).execute()
         st.success(f"¡Documento '{source_name}' y todos sus chunks han sido eliminados!")
-        get_document_list.clear() # Limpiar caché
+        get_document_list.clear()
     except Exception as e:
         st.error(f"Error al eliminar el documento: {e}")
 
 def log_and_get_id(tecnico, modelo, tipo, desc, diag):
     try:
-        response = supabase.table("diagnostics_log").insert({
-            "tecnico": tecnico, "modelo_maquina": modelo, "tipo_consulta": tipo,
-            "descripcion_averia": desc, "diagnostico_ia": diag
-        }).select("id").execute()
+        response = supabase.table("diagnostics_log").insert({"tecnico": tecnico, "modelo_maquina": modelo, "tipo_consulta": tipo, "descripcion_averia": desc, "diagnostico_ia": diag}).select("id").execute()
         if response.data:
             st.toast("Consulta registrada en el historial.")
-            get_dashboard_data.clear() # Limpiar caché del dashboard para que refleje la nueva consulta
+            get_dashboard_data.clear()
             return response.data[0]['id']
         return None
     except Exception as e:
@@ -281,10 +308,7 @@ def save_verified_knowledge(query, response, verifier):
     embedding = generate_embedding(response)
     if embedding:
         try:
-            supabase.table("verified_knowledge").insert({
-                "original_query": query, "verified_response": response,
-                "verified_by": verifier, "embedding": embedding
-            }).execute()
+            supabase.table("verified_knowledge").insert({"original_query": query, "verified_response": response, "verified_by": verifier, "embedding": embedding}).execute()
             st.success("¡Respuesta verificada y guardada!")
         except Exception as e:
             st.error(f"Error al guardar conocimiento verificado: {e}")
@@ -298,26 +322,20 @@ def generate_pdf_report(title, data_dict, content_text):
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
     styles = getSampleStyleSheet()
     story = []
-
     story.append(Paragraph(title, styles['h1']))
     story.append(Paragraph(f"Fecha: {datetime.now().strftime('%d/%m/%Y')}", styles['Normal']))
     story.append(Spacer(1, 0.5 * cm))
-
     for key, value in data_dict.items():
         story.append(Paragraph(f"<b>{key.replace('_', ' ').title()}:</b> {value}", styles['Normal']))
-    
     story.append(Spacer(1, 1 * cm))
-    
     cleaned_content = content_text.replace('#', '').replace('*', '')
     for paragraph in cleaned_content.split('\n'):
         if paragraph.strip():
             story.append(Paragraph(paragraph, styles['Normal']))
             story.append(Spacer(1, 0.2 * cm))
-
     story.append(Spacer(1, 4 * cm))
     story.append(Paragraph("____________________________", styles['Normal']))
     story.append(Paragraph("Firma del Mecánico", styles['Normal']))
-    
     doc.build(story)
     buffer.seek(0)
     return buffer
@@ -325,7 +343,7 @@ def generate_pdf_report(title, data_dict, content_text):
 def consult_tab():
     st.header("Consulta Técnica")
     if 'last_response' in st.session_state and st.button("Nueva Consulta"):
-        for key in ['last_response', 'last_query_data', 'context_docs', 'verified', 'log_id']:
+        for key in ['last_response', 'last_query_data', 'context_docs', 'verified', 'log_id', 'show_case_form']:
             if key in st.session_state: del st.session_state[key]
         st.rerun()
         
@@ -363,9 +381,15 @@ def consult_tab():
             st.info("ℹ️ Respuesta generada por IA")
         st.markdown(st.session_state['last_response'])
         
-        pdf_buffer = generate_pdf_report("Informe de Consulta Técnica", st.session_state['last_query_data'], st.session_state['last_response'])
-        if pdf_buffer:
-            st.download_button(label="📥 Descargar Informe en PDF", data=pdf_buffer, file_name=f"informe_consulta_{datetime.now().strftime('%Y%m%d')}.pdf", mime="application/pdf")
+        col1, col2 = st.columns(2)
+        with col1:
+            pdf_buffer = generate_pdf_report("Informe de Consulta Técnica", st.session_state['last_query_data'], st.session_state['last_response'])
+            if pdf_buffer:
+                st.download_button(label="📥 Descargar Informe en PDF", data=pdf_buffer, file_name=f"informe_consulta_{datetime.now().strftime('%Y%m%d')}.pdf", mime="application/pdf", use_container_width=True)
+        with col2:
+            if st.button("📝 Crear Caso a partir de esta Consulta", use_container_width=True):
+                st.session_state['show_case_form'] = True
+                st.rerun()
 
         if not st.session_state.get('verified') and st.session_state.get('log_id') is not None:
             log_id = st.session_state['log_id']
@@ -373,6 +397,22 @@ def consult_tab():
             cols = st.columns(10)
             cols[0].button("👍", on_click=update_feedback, args=(log_id, 1), key=f"up_{log_id}")
             cols[1].button("👎", on_click=update_feedback, args=(log_id, -1), key=f"down_{log_id}")
+
+    if st.session_state.get('show_case_form'):
+        st.divider()
+        st.header("Crear Nuevo Caso de Trabajo")
+        with st.form("new_case_from_consult_form"):
+            q_data = st.session_state['last_query_data']
+            title = st.text_input("Título del Caso", value=f"{q_data['tipo']} - {q_data['modelo']}")
+            description = st.text_area("Descripción", value=q_data['consulta'], height=150)
+            assigned_to = st.text_input("Asignar a Mecánico")
+            priority = st.selectbox("Prioridad", ["Baja", "Media", "Alta"], index=1)
+            submitted_case = st.form_submit_button("Crear Caso", type="primary")
+
+            if submitted_case:
+                create_work_order(title, description, q_data['modelo'], q_data['tipo'], assigned_to, priority, st.session_state.get('log_id'))
+                st.session_state['show_case_form'] = False
+                st.rerun()
 
 def maintenance_tab():
     st.header("Generador de Planes de Mantenimiento Preventivo")
@@ -392,7 +432,6 @@ def maintenance_tab():
         st.divider()
         st.subheader("Plan de Mantenimiento Sugerido")
         st.markdown(st.session_state['maintenance_plan'])
-        
         pdf_buffer = generate_pdf_report("Plan de Mantenimiento Preventivo", st.session_state['maintenance_data'], st.session_state['maintenance_plan'])
         if pdf_buffer:
             st.download_button(label="📥 Descargar Plan en PDF", data=pdf_buffer, file_name=f"plan_mantenimiento_{st.session_state['maintenance_data']['modelo']}.pdf", mime="application/pdf")
@@ -432,59 +471,41 @@ def calculator_tab():
 def dashboard_tab():
     st.header("Dashboard de Inteligencia Técnica")
     st.markdown("Analiza el uso y la efectividad del asistente técnico en tiempo real.")
-
     df = get_dashboard_data()
-
     if df.empty:
         st.info("No hay datos suficientes para generar el dashboard. Realiza algunas consultas primero.")
         return
-
-    # --- KPIs Principales ---
     st.subheader("Indicadores Clave de Rendimiento (KPIs)")
-    
     seven_days_ago = pd.Timestamp.now(tz='Europe/Madrid') - pd.Timedelta(days=7)
     df_last_7_days = df[df['created_at'] >= seven_days_ago]
-
     total_queries = len(df)
     queries_last_7_days = len(df_last_7_days)
-    
     feedback_counts = df['feedback'].value_counts()
     util = feedback_counts.get(1, 0)
     no_util = feedback_counts.get(-1, 0)
     total_feedback = util + no_util
     satisfaction = (util / total_feedback * 100) if total_feedback > 0 else 0
     queries_no_feedback = total_queries - total_feedback
-
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total Consultas", total_queries)
     col2.metric("Consultas (Últ. 7 Días)", queries_last_7_days)
     col3.metric("Índice de Satisfacción", f"{satisfaction:.1f}%", help="Porcentaje de respuestas marcadas como 'útiles' sobre el total de respuestas valoradas.")
     col4.metric("Consultas sin Valorar", queries_no_feedback)
-    
     st.divider()
-
-    # --- Visualizaciones ---
     col_a, col_b = st.columns(2)
-
     with col_a:
         st.subheader("Rendimiento de la IA")
         if total_feedback > 0:
-            feedback_df = pd.DataFrame({
-                'Valoración': ['Útil', 'No Útil', 'Sin Valorar'],
-                'Cantidad': [util, no_util, queries_no_feedback]
-            })
+            feedback_df = pd.DataFrame({'Valoración': ['Útil', 'No Útil', 'Sin Valorar'], 'Cantidad': [util, no_util, queries_no_feedback]})
             st.bar_chart(feedback_df.set_index('Valoración'))
         else:
             st.info("Aún no se ha valorado ninguna respuesta.")
-            
         st.subheader("Consultas por Técnico")
         df['tecnico'] = df['tecnico'].fillna('Anónimo')
         st.bar_chart(df['tecnico'].value_counts().head(10))
-
     with col_b:
         st.subheader("Máquinas Más Consultadas")
         st.bar_chart(df['modelo_maquina'].value_counts().head(10))
-
         st.subheader("Tipos de Consulta Frecuentes")
         st.bar_chart(df['tipo_consulta'].value_counts())
 
@@ -517,9 +538,7 @@ def history_tab():
 def knowledge_management_tab():
     st.header("Gestión de la Base de Conocimiento")
     st.markdown("Aquí puedes ver y eliminar los documentos que forman la memoria del asistente.")
-    
     docs_df = get_document_list()
-    
     if not docs_df.empty:
         st.dataframe(docs_df, use_container_width=True)
         doc_to_delete = st.selectbox("Selecciona un documento para eliminar:", options=docs_df['source'].tolist())
@@ -530,9 +549,81 @@ def knowledge_management_tab():
     else:
         st.info("No hay documentos en la base de conocimiento. Sube algunos desde la barra lateral.")
 
+def cmms_tab():
+    st.header("Gestión de Casos (CMMS)")
+    st.markdown("Crea y gestiona órdenes de trabajo para averías y mantenimientos preventivos.")
+
+    if st.button("➕ Crear Nuevo Caso"):
+        st.session_state['show_new_case_form'] = True
+    
+    if st.session_state.get('show_new_case_form'):
+        with st.form("new_case_form"):
+            st.subheader("Detalles del Nuevo Caso")
+            title = st.text_input("Título del Caso", placeholder="Ej: Mantenimiento 500h John Deere 6110M")
+            machine_model = st.text_input("Modelo de Máquina")
+            description = st.text_area("Descripción Detallada")
+            c1, c2, c3 = st.columns(3)
+            work_type = c1.selectbox("Tipo de Trabajo", ["Avería", "Preventivo", "Mejora", "Inspección"])
+            assigned_to = c2.text_input("Asignar a")
+            priority = c3.selectbox("Prioridad", ["Baja", "Media", "Alta"], index=1)
+            submitted = st.form_submit_button("Guardar Caso", type="primary")
+
+            if submitted:
+                if title and machine_model:
+                    create_work_order(title, description, machine_model, work_type, assigned_to, priority)
+                    st.session_state['show_new_case_form'] = False
+                    st.rerun()
+                else:
+                    st.warning("El título y el modelo de la máquina son obligatorios.")
+
+    st.divider()
+    st.subheader("Tablero de Casos")
+    
+    work_orders = get_work_orders()
+    if not work_orders:
+        st.info("No hay casos de trabajo activos. ¡Crea uno para empezar!")
+        return
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.markdown("<h3 style='text-align: center;'>Abierto</h3>", unsafe_allow_html=True)
+        for case in [wo for wo in work_orders if wo['status'] == 'Abierto']:
+            with st.container(border=True):
+                st.markdown(f"**{case['title']}**")
+                st.caption(f"#{case['id']} | Prioridad: {case['priority']}")
+                st.markdown(f"**Máquina:** {case['machine_model']}")
+                if case.get('assigned_to'):
+                    st.markdown(f"**Asignado a:** {case['assigned_to']}")
+                if st.button("▶️ Empezar", key=f"start_{case['id']}", use_container_width=True):
+                    update_work_order_status(case['id'], 'En Progreso')
+                    st.rerun()
+
+    with col2:
+        st.markdown("<h3 style='text-align: center;'>En Progreso</h3>", unsafe_allow_html=True)
+        for case in [wo for wo in work_orders if wo['status'] == 'En Progreso']:
+            with st.container(border=True):
+                st.markdown(f"**{case['title']}**")
+                st.caption(f"#{case['id']} | Prioridad: {case['priority']}")
+                st.markdown(f"**Máquina:** {case['machine_model']}")
+                if case.get('assigned_to'):
+                    st.markdown(f"**Asignado a:** {case['assigned_to']}")
+                if st.button("✅ Finalizar", key=f"finish_{case['id']}", use_container_width=True):
+                    update_work_order_status(case['id'], 'Cerrado')
+                    st.rerun()
+    
+    with col3:
+        st.markdown("<h3 style='text-align: center;'>Cerrado</h3>", unsafe_allow_html=True)
+        for case in [wo for wo in work_orders if wo['status'] == 'Cerrado']:
+            with st.container(border=True):
+                st.markdown(f"**{case['title']}**")
+                st.caption(f"#{case['id']} | Prioridad: {case['priority']}")
+                st.markdown(f"**Máquina:** {case['machine_model']}")
+
+
 # --- Aplicación Principal ---
 def main():
-    st.title("🛠️ Asistente Técnico Satgarden V2.4")
+    st.title("🛠️ Asistente Técnico Satgarden V2.5")
     st.markdown("""
     **Bienvenido al Asistente Técnico de Satgarden.** Esta plataforma centraliza todo el conocimiento técnico de la empresa.
     - **Consulta:** Realiza preguntas técnicas sobre cualquier máquina.
@@ -547,7 +638,6 @@ def main():
             st.image("logo.png", use_container_width=True)
         except Exception:
             pass
-
         st.header("Administración")
         with st.expander("Cargar Documentos", expanded=True):
             uploaded_files = st.file_uploader("Sube manuales en formato PDF", type=['pdf'], accept_multiple_files=True)
@@ -559,6 +649,7 @@ def main():
     
     tabs = st.tabs([
         "Consulta", 
+        "Gestión de Casos (CMMS)",
         "Mantenimiento Preventivo", 
         "Calculadora",
         "Dashboard", 
@@ -569,17 +660,20 @@ def main():
     with tabs[0]:
         consult_tab()
     with tabs[1]:
-        maintenance_tab()
+        cmms_tab()
     with tabs[2]:
-        calculator_tab()
+        maintenance_tab()
     with tabs[3]:
-        dashboard_tab()
+        calculator_tab()
     with tabs[4]:
-        history_tab()
+        dashboard_tab()
     with tabs[5]:
+        history_tab()
+    with tabs[6]:
         knowledge_management_tab()
 
 if __name__ == "__main__":
     main()
+
 
 
