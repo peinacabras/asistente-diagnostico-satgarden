@@ -1,7 +1,8 @@
 """
-ASISTENTE TÉCNICO SATGARDEN V2.12
+ASISTENTE TÉCNICO SATGARDEN V2.13
 Implementación completa de todas las funcionalidades:
-- FIX: Ajuste final de proporciones en los botones del Hub para un diseño más refinado.
+- FIX: Ocultada la barra lateral en la página principal (Hub) para una interfaz más limpia.
+- Ajuste final de proporciones en los botones del Hub para un diseño más refinado.
 - Reestructurada la página principal (Hub) con un layout de filas y columnas robusto.
 - Corregido el renderizado de iconos en los botones del menú principal.
 - Rediseño completo de la interfaz de usuario (UI/UX).
@@ -42,7 +43,7 @@ except ImportError:
 
 # --- Configuración Inicial ---
 load_dotenv()
-st.set_page_config(page_title="Asistente Satgarden V2.12", page_icon="🛠️", layout="wide")
+st.set_page_config(page_title="Asistente Satgarden V2.13", page_icon="🛠️", layout="wide")
 
 # --- Estilos CSS Personalizados ---
 def load_css():
@@ -858,23 +859,25 @@ def render_full_app():
 def main():
     load_css()
 
-    with st.sidebar:
-        try:
-            st.image("logo.png", use_container_width=True)
-        except Exception:
-            pass # Fails silently if logo is not found
-        st.header("Administración")
-        with st.expander("Cargar Documentos", expanded=True):
-            uploaded_files = st.file_uploader("Sube manuales en formato PDF", type=['pdf'], accept_multiple_files=True)
-            if st.button("Procesar y Guardar PDFs"):
-                if uploaded_files:
-                    ingest_pdf_files(uploaded_files)
-                else:
-                    st.warning("Por favor, selecciona al menos un archivo PDF.")
-    
     if 'page' not in st.session_state:
         st.session_state.page = "Hub"
 
+    # Only show sidebar if not on the Hub page
+    if st.session_state.page != "Hub":
+        with st.sidebar:
+            try:
+                st.image("logo.png", use_container_width=True)
+            except Exception:
+                pass # Fails silently if logo is not found
+            st.header("Administración")
+            with st.expander("Cargar Documentos", expanded=True):
+                uploaded_files = st.file_uploader("Sube manuales en formato PDF", type=['pdf'], accept_multiple_files=True)
+                if st.button("Procesar y Guardar PDFs"):
+                    if uploaded_files:
+                        ingest_pdf_files(uploaded_files)
+                    else:
+                        st.warning("Por favor, selecciona al menos un archivo PDF.")
+    
     if st.session_state.page == "Hub":
         render_hub_page()
     else:
